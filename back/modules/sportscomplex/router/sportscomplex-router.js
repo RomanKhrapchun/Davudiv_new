@@ -50,11 +50,11 @@ async function sportsComplexRoutes(fastify, options) {
         handler: sportsComplexController.createPoolService
     });
 
-    fastify.get("/services/:id", {
+    fastify.get("/service/:id", {
         handler: sportsComplexController.getServiceById
     });
 
-    fastify.put("/services/:id", {
+    fastify.put("/service/:id", {
         schema: updateServiceSchema,
         handler: sportsComplexController.updateService
     });
@@ -74,7 +74,7 @@ async function sportsComplexRoutes(fastify, options) {
         handler: sportsComplexController.getServicesByGroup
     });
 
-    // ✅ НОВЫЙ ЕНДПОІНТ - пошук клієнта по номеру абонемента
+    //Пошук клієнта по номеру абонемента
     fastify.post("/clients/search-by-membership", {
         schema: searchClientByMembershipSchema,
         handler: sportsComplexController.searchClientByMembership

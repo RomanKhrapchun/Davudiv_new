@@ -126,12 +126,12 @@ const Services = () => {
                     <Button 
                         title="Перегляд" 
                         icon={viewIcon} 
-                        onClick={() => navigate(`/sportscomplex/services/${id}`)} 
+                        onClick={() => navigate(`/sportscomplex/service/${id}`)}  // ✅
                     />
                     <Button 
                         title="Редагувати" 
                         icon={editIcon} 
-                        onClick={() => navigate(`/sportscomplex/services/${id}/edit`)} 
+                        onClick={() => navigate(`/sportscomplex/service/${id}/edit`)}  // ✅
                     />
                 </div>
             ),

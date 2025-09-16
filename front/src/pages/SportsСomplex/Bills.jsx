@@ -17,6 +17,8 @@ import Modal from "../../components/common/Modal/Modal.jsx";
 import { Transition } from "react-transition-group";
 import FormItem from "../../components/common/FormItem/FormItem";
 import Select from "../../components/common/Select/Select";
+import SportsFilterDropdown from "../../components/common/Dropdown/SportsFilterDropdown";
+import "../../components/common/Dropdown/SportsFilterDropdown.css";
 
 // Іконки
 const viewIcon = generateIcon(iconMap.view);
@@ -26,10 +28,38 @@ const filterIcon = generateIcon(iconMap.filter);
 const searchIcon = generateIcon(iconMap.search, 'input-icon');
 const dropDownIcon = generateIcon(iconMap.arrowDown);
 const addIcon = generateIcon(iconMap.add);
-const cancelIcon = generateIcon(iconMap.close);
-const changeStateIcon = generateIcon(iconMap.edit);
+const sortUpIcon = generateIcon(iconMap.arrowUp, 'sort-icon', 'currentColor', 14, 14);
+const sortDownIcon = generateIcon(iconMap.arrowDown, 'sort-icon', 'currentColor', 14, 14);
 const dropDownStyle = { width: '100%' };
 const childDropDownStyle = { justifyContent: 'center' };
+
+// СПИСОК ПІЛЬГ
+const DISCOUNT_OPTIONS = [
+    {
+        id: 'orphans_heroes',
+        label: 'Дітям-сиротам, дітям із багатодітних сімей, дітям, батьки яких є героями'
+    },
+    {
+        id: 'refugees_heroes_war',
+        label: 'Дітям-біженцям, дітям з багатодітних сімей, дітям, батьки яких є героями війни або загинули'
+    },
+    {
+        id: 'disability_1_2',
+        label: 'Особам з інвалідністю I та II групи (мешканці Давидівської сільської територіальної громади)'
+    },
+    {
+        id: 'war_veterans',
+        label: 'Учасникам бойових дій та особам з інвалідністю внаслідок війни, які брали участь у бойових діях починаючи з 2014 року'
+    },
+    {
+        id: 'military_service',
+        label: 'Військовослужбовцям, які проходять службу у Збройних Силах України та інших військових формуваннях'
+    },
+    {
+        id: 'families_fallen',
+        label: 'Сім\'ям загиблих військовослужбовців, полонених та зниклих безвісти військових'
+    }
+];
 
 const Bills = () => {
     const navigate = useNavigate();
@@ -37,60 +67,145 @@ const Bills = () => {
     const { store } = useContext(Context);
     const nodeRef = useRef(null);
     const addFormRef = useRef(null);
-    const changeStateRef = useRef(null);
+    const editFormRef = useRef(null);
+    const reportModalRef = useRef(null);
     const isFirstRun = useRef(true);
     
     const [state, setState] = useState({
-        isOpen: false,
+        isFilterOpen: false,
         selectData: {},
         confirmLoading: false,
         itemId: null,
         sendData: {
             limit: 16,
             page: 1,
+            sort_by: null,
+            sort_direction: null,
         }
     });
     
-    // Стан для модального вікна створення рахунку
+    // ✅ ФУНКЦІЇ СОРТУВАННЯ
+    const handleSort = useCallback((dataIndex) => {
+        setState(prevState => {
+            let newDirection = 'desc'; // За замовчуванням від найбільшого до найменшого
+            
+            // Якщо вже сортуємо по цьому полю, змінюємо напрямок
+            if (prevState.sendData.sort_by === dataIndex) {
+                newDirection = prevState.sendData.sort_direction === 'desc' ? 'asc' : 'desc';
+            }
+            
+            return {
+                ...prevState,
+                sendData: {
+                    ...prevState.sendData,
+                    sort_by: dataIndex,
+                    sort_direction: newDirection,
+                    page: 1, // Скидаємо на першу сторінку при сортуванні
+                }
+            };
+        });
+    }, []);
+
+    // ✅ ФУНКЦІЯ ДЛЯ ІКОНКИ СОРТУВАННЯ
+    const getSortIcon = useCallback((dataIndex) => {
+        if (state.sendData.sort_by !== dataIndex) {
+            return null;
+        }
+        try {
+            return state.sendData.sort_direction === 'desc' ? sortDownIcon : sortUpIcon;
+        } catch (error) {
+            console.error('Помилка при створенні іконки сортування:', error);
+            return null;
+        }
+    }, [state.sendData.sort_by, state.sendData.sort_direction]);
+    
+    // Стан для модальних вікон
     const [createModalState, setCreateModalState] = useState({
         isOpen: false,
         loading: false,
         formData: {
             membership_number: '',
             client_name: '',
+            phone_number: '',
             service_group_id: '',
             service_id: '',
-            visit_count: 1,
-            // Автоматично заповнювані поля
-            service_name: '',
-            lesson_count: '',
+            visit_count: '',
             price: 0,
             total_price: 0,
+            discount_type: '',
+            discount_applied: false,
         },
-        serviceGroups: [], // Список груп послуг
-        services: [],      // Список послуг для вибраної групи
+        serviceGroups: [],
+        services: [],
+        searchResults: [],
+        isClientFound: false,
     });
-    
-    // Стан для модального вікна зміни статусу
-    const [changeStateModalState, setChangeStateModalState] = useState({
+
+    const [editModalState, setEditModalState] = useState({
         isOpen: false,
         loading: false,
-        bill: null,
-        newState: ''
+        billId: null,
+        formData: {
+            membership_number: '',
+            client_name: '',
+            phone_number: '',
+            service_group_id: '',
+            service_id: '',
+            visit_count: '',
+            price: 0,
+            total_price: 0,
+            discount_type: '',
+            discount_applied: false,
+        },
+        serviceGroups: [],
+        services: [],
+        searchResults: [],
+        isClientFound: false,
+    });
+
+    // ✅ НОВИЙ СТАН ДЛЯ МОДАЛЬНОГО ВІКНА ЗВІТІВ
+    const [reportModalState, setReportModalState] = useState({
+        isOpen: false,
+        loading: false,
+        reportType: '', // 'date', 'today', 'all'
+        selectedDate: ''
     });
 
     // Завантаження даних рахунків
     const {error, status, data, retryFetch} = useFetch('api/sportscomplex/bills/filter', {
         method: 'post',
         data: state.sendData
-    }) 
-    
-    // Завантаження груп послуг при відкритті модального вікна
+    });
+
+    // Завантаження груп послуг
     useEffect(() => {
-        if (createModalState.isOpen && createModalState.serviceGroups.length === 0) {
-            loadServiceGroups();
-        }
-    }, [createModalState.isOpen]);
+        const loadServiceGroups = async () => {
+            try {
+                const response = await fetchFunction('/api/sportscomplex/service-groups', {
+                    method: 'get'
+                });
+                
+                if (response?.data) {
+                    const groups = response.data.map(group => ({
+                        value: group.id,
+                        label: group.name
+                    }));
+                    
+                    setCreateModalState(prev => ({ ...prev, serviceGroups: groups }));
+                    setEditModalState(prev => ({ ...prev, serviceGroups: groups }));
+                }
+            } catch (error) {
+                notification({
+                    type: 'warning',
+                    title: "Помилка",
+                    message: "Не вдалося завантажити групи послуг",
+                    placement: 'top',
+                });
+            }
+        };
+
+        loadServiceGroups();
+    }, []);
 
     // Ефект для оновлення даних при зміні параметрів пошуку
     useEffect(() => {
@@ -102,42 +217,42 @@ const Bills = () => {
             method: 'post',
             data: state.sendData,
         })
-    }, [state.sendData, retryFetch])
-    
-    // Завантаження груп послуг
-    const loadServiceGroups = async () => {
+    }, [state.sendData, retryFetch]);
+
+    const startRecord = ((state.sendData.page || 1) - 1) * state.sendData.limit + 1;
+    const endRecord = Math.min(startRecord + state.sendData.limit - 1, parseInt(data?.totalItems) || 1);
+
+    // Пошук клієнтів по номеру абонемента
+    const searchClientByMembership = async (membershipNumber) => {
+        console.log('🔍 Шукаємо клієнта з номером:', membershipNumber);
+        
+        if (!membershipNumber || membershipNumber.length < 5) {
+            console.log('⚠️ Номер занадто короткий:', membershipNumber);
+            return null;
+        }
+        
         try {
-            const response = await fetchFunction('/api/sportscomplex/service-groups', {
-                method: 'get'
+            const response = await fetchFunction(`/api/sportscomplex/clients/search-by-membership`, {
+                method: 'post',
+                data: { membership_number: membershipNumber }
             });
             
-            if (response?.data) {
-                setCreateModalState(prev => ({
-                    ...prev,
-                    serviceGroups: response.data.map(group => ({
-                        value: group.id,
-                        label: group.name
-                    }))
-                }));
-            }
+            console.log('📥 Відповідь від сервера:', response);
+            return response?.data?.data || null;
         } catch (error) {
-            notification({
-                type: 'warning',
-                title: "Помилка",
-                message: "Не вдалося завантажити групи послуг",
-                placement: 'top',
-            });
+            console.error('❌ Помилка пошуку клієнта:', error);
+            return null;
         }
     };
-    
+
     // Завантаження послуг для вибраної групи
-    const loadServicesForGroup = async (groupId) => {
-        // Якщо groupId не вказано, не робимо запит
+    const loadServicesForGroup = async (groupId, modalType = 'create') => {
         if (!groupId) {
-            setCreateModalState(prev => ({
-                ...prev,
-                services: []
-            }));
+            if (modalType === 'create') {
+                setCreateModalState(prev => ({ ...prev, services: [] }));
+            } else {
+                setEditModalState(prev => ({ ...prev, services: [] }));
+            }
             return;
         }
         
@@ -147,17 +262,18 @@ const Bills = () => {
             });
             
             if (response?.data) {
-                //console.log("Завантажені послуги:", response.data); // Для відлагодження
-                
-                setCreateModalState(prev => ({
-                    ...prev,
-                    services: Array.isArray(response.data) ? response.data.map(service => ({
-                        value: service.id,
-                        label: service.name,
-                        lesson_count: service.lesson_count,
-                        price: service.price
-                    })) : []
-                }));
+                const services = Array.isArray(response.data) ? response.data.map(service => ({
+                    value: service.id,
+                    label: service.name,
+                    visit_count: service.lesson_count,
+                    price: service.price
+                })) : [];
+
+                if (modalType === 'create') {
+                    setCreateModalState(prev => ({ ...prev, services }));
+                } else {
+                    setEditModalState(prev => ({ ...prev, services }));
+                }
             }
         } catch (error) {
             notification({
@@ -169,160 +285,62 @@ const Bills = () => {
         }
     };
 
-    const startRecord = ((state.sendData.page || 1) - 1) * state.sendData.limit + 1;
-    const endRecord = Math.min(startRecord + state.sendData.limit - 1, parseInt(data?.totalItems) || 1);
+    // ✅ ПОКРАЩЕНІ КОЛОНКИ З МОЖЛИВІСТЮ СОРТУВАННЯ
+    const columnTable = useMemo(() => {
+        const createSortableColumn = (title, dataIndex, render = null, width = null) => ({
+            title,
+            dataIndex,
+            sortable: true,
+            onHeaderClick: () => handleSort(dataIndex),
+            sortIcon: getSortIcon(dataIndex),
+            headerClassName: state.sendData.sort_by === dataIndex ? 'active' : '',
+            ...(width && { width }),
+            ...(render && { render })
+        });
 
-    // Визначення колонок таблиці
-    const columnTable = useMemo(() => [
-        {
-            title: 'Номер рахунку',
-            dataIndex: 'membership_number',
-            width: '10%'
-        },
-        {
-            title: 'Платник',
-            dataIndex: 'client_name',
-            width: '15%'
-        },
-        {
-            title: 'Група послуг',
-            dataIndex: 'service_group',
-            width: '12%'
-        },
-        {
-            title: 'Назва послуги',
-            dataIndex: 'service_name',
-            width: '15%'
-        },
-        {
-            title: 'Одиниці',
-            dataIndex: 'lesson_count',
-            width: '8%'
-        },
-        {
-            title: 'Кількість',
-            dataIndex: 'visit_count',
-            width: '8%'
-        },
-        {
-            title: 'Вартість',
-            dataIndex: 'total_price',
-            width: '8%',
-            render: (price) => `${price} грн`
-        },
-        {
-            title: 'Стан',
-            dataIndex: 'status',
-            width: '10%',
-            render: (status) => {
-                let color = '';
-                switch(status) {
-                    case 'В процесі':
-                        color = 'blue';
-                        break;
-                    case 'Оплачено':
-                        color = 'green';
-                        break;
-                    case 'Скасовано':
-                        color = 'red';
-                        break;
-                    default:
-                        color = 'black';
+        return [
+            createSortableColumn('Номер абонемента', 'membership_number', null, '12%'),
+            createSortableColumn('ПІБ клієнта', 'client_name', null, '15%'),
+            createSortableColumn('Номер телефону', 'phone_number', null, '12%'),
+            createSortableColumn('Група послуг', 'service_group', null, '12%'),
+            createSortableColumn('Послуга', 'service_name', null, '15%'),
+            createSortableColumn('Кількість відвідувань', 'visit_count', null, '10%'),
+            createSortableColumn('Ціна', 'total_price', (price) => `${price} грн`, '10%'),
+            {
+                title: 'Пільга',
+                dataIndex: 'discount_type',
+                width: '10%',
+                headerClassName: 'non-sortable',
+                render: (discountType) => {
+                    if (!discountType) return '—';
+                    const discount = DISCOUNT_OPTIONS.find(d => d.id === discountType);
+                    return discount ? discount.label : '—';
                 }
-                return <span style={{ color }}>{status}</span>;
-            }
-        },
-        {
-            title: 'Дія',
-            dataIndex: 'action',
-            width: '14%',
-            render: (_, record) => {
-                // Визначаємо наступний статус для зміни
-                let nextStatus;
-                switch(record.status) {
-                    case 'В процесі':
-                        nextStatus = 'Оплачено';
-                        break;
-                    case 'Оплачено':
-                        nextStatus = 'Скасовано';
-                        break;
-                    case 'Скасовано':
-                        nextStatus = 'В процесі';
-                        break;
-                }
-
-                return (
-                    <div className="btn-sticky" style={{ justifyContent: 'center' }}>
-                        {/* Кнопка "Змінити стан" - завжди присутня */}
+            },
+            {
+                title: 'Дія',
+                dataIndex: 'action',
+                headerClassName: 'non-sortable',
+                width: '14%',
+                render: (_, record) => (
+                    <div className="btn-sticky" style={{ justifyContent: 'center', gap: '2px' }}>
                         <Button
-                            title={`Змінити на "${nextStatus}"`}
-                            icon={changeStateIcon}
-                            onClick={() => handleOpenChangeStateModal(record, nextStatus)}
+                            title="Редагувати"
+                            icon={editIcon}
+                            size="small"
+                            onClick={() => handleOpenEditModal(record)}
                         />
-                        
-                        {/* Інші кнопки в залежності від статусу */}
-                        {record.status === 'В процесі' && (
-                            <>
-                                <Button
-                                    title="Переглянути реквізити"
-                                    icon={viewIcon}
-                                    onClick={() => navigate(`/sportscomplex/bills/${record.id}/requisites`)}
-                                />
-                                <Button
-                                    title="Скасувати"
-                                    icon={cancelIcon}
-                                    onClick={async () => {
-                                        try {
-                                            await fetchFunction(`/api/sportscomplex/bills/${record.id}/status`, {
-                                                method: 'put',
-                                                data: { status: 'Скасовано' }
-                                            });
-                                            notification({
-                                                type: 'success',
-                                                message: `Рахунок №${record.membership_number} скасовано`
-                                            });
-                                            retryFetch('/api/sportscomplex/bills/filter', {
-                                                method: 'post',
-                                                data: state.sendData
-                                            });
-                                        } catch (e) {
-                                            notification({
-                                                type: 'error',
-                                                message: 'Не вдалося скасувати рахунок'
-                                            });
-                                        }
-                                    }}
-                                />
-                            </>
-                        )}
-                        
-                        {record.status === 'Оплачено' && (
-                            <>
-                                <Button
-                                    title="Переглянути"
-                                    icon={viewIcon}
-                                    onClick={() => navigate(`/sportscomplex/bills/${record.id}/requisites`)}
-                                />
-                                <Button
-                                    title="Завантажити квитанцію"
-                                    icon={downloadIcon}
-                                    onClick={() => handleDownloadReceipt(record.id)}
-                                />
-                            </>
-                        )}
-                        
-                        {record.status === 'Скасовано' && (
-                            <Button
-                                title="Переглянути"
-                                icon={viewIcon}
-                                onClick={() => navigate(`/sportscomplex/bills/${record.id}/requisites`)}
-                            />
-                        )}
+                        <Button
+                            title="Скачати"
+                            icon={downloadIcon}
+                            size="small"
+                            onClick={() => handleDownloadBill(record.id)}
+                        />
                     </div>
-                );
+                )
             }
-        }
-    ], [navigate]);
+        ];
+    }, [handleSort, getSortIcon, state.sendData.sort_by]);
 
     // Підготовка даних для таблиці
     const tableData = useMemo(() => {
@@ -332,15 +350,15 @@ const Bills = () => {
             id: el.id,
             membership_number: el.membership_number,
             client_name: el.client_name,
+            phone_number: el.phone_number,
             service_group: el.service_group,
             service_name: el.service_name,
-            lesson_count: el.lesson_count,
             visit_count: el.visit_count,
             total_price: el.total_price,
-            status: el.status
+            discount_type: el.discount_type,
+            created_at: el.created_at
         }));
     }, [data]);
-
 
     // Пункти меню для вибору кількості записів на сторінці
     const itemMenu = [16, 32, 48].map(size => ({
@@ -354,110 +372,311 @@ const Bills = () => {
     }));
 
     // Функції для фільтрів
-    const filterHandleClick = () => setState(prev => ({...prev, isOpen: !prev.isOpen}));
+    const filterHandleClick = () => {
+        setState(prevState => ({
+            ...prevState,
+            isFilterOpen: !prevState.isFilterOpen,
+        }))
+    }
 
-    const onHandleChange = (name, value) => setState(prev => ({
-        ...prev, 
-        selectData: {...prev.selectData, [name]: value}
-    }));
-    
-    // Функції для модального вікна створення рахунку
-    const onCreateFormChange = (name, value) => {
-        setCreateModalState(prev => {
-            const updatedFormData = {
-                ...prev.formData,
-                [name]: value
-            };
-            
-            // Якщо змінюється кількість, оновити загальну вартість
-            if (name === 'visit_count' && updatedFormData.price) {
-                updatedFormData.total_price = updatedFormData.price * value;
+    const closeFilterDropdown = () => {
+        setState(prevState => ({
+            ...prevState,
+            isFilterOpen: false,
+        }))
+    }
+
+    // Перевіряємо чи є активні фільтри
+    const hasActiveFilters = useMemo(() => {
+        return Object.values(state.selectData).some(value => {
+            if (Array.isArray(value) && !value.length) {
+                return false
             }
-            
+            return value !== null && value !== undefined && value !== ''
+        })
+    }, [state.selectData])
+
+    const onHandleChange = (name, value) => {
+        console.log('🔍 === ФРОНТЕНД ДЕБАГ ===');
+        console.log('🔍 onHandleChange викликано з:', name, '=', value);
+        setState(prev => {
+            const newSelectData = {...prev.selectData, [name]: value};
+            console.log('🔍 Новий selectData:', newSelectData);
             return {
-                ...prev,
-                formData: updatedFormData
-            };
+                ...prev, 
+                selectData: newSelectData
+            }
         });
     };
-    
-    // Функція для обробки вибору групи послуг
-    const handleServiceGroupChange = (name, option) => {
-        // Правильно отримуємо значення, залежно від того, чи це об'єкт чи примітив
-        const groupId = option && typeof option === 'object' ? option.value : option;
-        
+
+    // Функція для зміни полів форми створення
+    const onCreateFormChange = async (name, value) => {
+        console.log('🔥 onCreateFormChange:', name, value);
+
+        // Спочатку оновлюємо стан
         setCreateModalState(prev => ({
             ...prev,
             formData: {
                 ...prev.formData,
-                service_group_id: option, // Зберігаємо повний об'єкт опції
-                service_id: '', // Скидаємо вибрану послугу
-                service_name: '',
-                lesson_count: '',
-                price: 0,
-                total_price: 0
+                [name]: value
             }
         }));
-        
-        // Переконуємося, що у нас є валідний groupId перед тим, як зробити API-виклик
-        if (groupId) {
-            loadServicesForGroup(groupId);
+
+        // АВТОЗАПОВНЕННЯ при введенні номера абонемента
+        if (name === 'membership_number' && value.length >= 5) {
+            console.log('🔍 Початок пошуку клієнта для номера:', value);
+            
+            try {
+                const client = await searchClientByMembership(value);
+                console.log('✅ Результат пошуку клієнта:', client);
+                
+                if (client) {
+                    setCreateModalState(prev => ({
+                        ...prev,
+                        formData: {
+                            ...prev.formData,
+                            client_name: client.name || '',
+                            phone_number: client.phone_number || ''
+                        },
+                        isClientFound: true
+                    }));
+                    console.log('✅ Дані клієнта заповнені:', client.name, client.phone_number);
+                } else {
+                    // Очищаємо поля, якщо клієнт не знайдений
+                    setCreateModalState(prev => ({
+                        ...prev,
+                        formData: {
+                            ...prev.formData,
+                            client_name: '',
+                            phone_number: ''
+                        },
+                        isClientFound: false
+                    }));
+                    console.log('❌ Клієнта не знайдено, поля очищено');
+                }
+            } catch (error) {
+                console.error('❌ Помилка під час пошуку:', error);
+                setCreateModalState(prev => ({
+                    ...prev,
+                    isClientFound: false
+                }));
+            }
+        }
+
+        // ОЧИЩАЄМО СТАТУС ПОШУКУ ЯКЩО НОМЕР АБОНЕМЕНТА ЗМІНИВСЯ
+        if (name === 'membership_number' && value.length < 5) {
+            setCreateModalState(prev => ({
+                ...prev,
+                isClientFound: false,
+                formData: {
+                    ...prev.formData,
+                    client_name: '',
+                    phone_number: ''
+                }
+            }));
         }
     };
 
-    // Функція для обробки вибору послуги
-    const handleServiceChange = (name, option) => {
-        //console.log("handleServiceChange викликаний з:", { name, option }); // Для відлагодження
-        
-        if (!option) return;
-        
-        // Якщо опція - це об'єкт з компонента Select
-        const serviceOption = createModalState.services.find(
-            service => service.value === (typeof option === 'object' ? option.value : option)
-        );
-        
-        if (serviceOption) {
-            const { label, lesson_count, price } = serviceOption;
-            const visit_count = parseInt(createModalState.formData.visit_count) || 1;
+    // Функції для модального вікна редагування
+    const onEditFormChange = async (name, value) => {
+        setEditModalState(prev => ({
+            ...prev,
+            formData: {
+                ...prev.formData,
+                [name]: value
+            }
+        }));
 
+        if (name === 'membership_number' && value.length >= 5) {
+            const client = await searchClientByMembership(value);
+            if (client) {
+                setEditModalState(prev => ({
+                    ...prev,
+                    formData: {
+                        ...prev.formData,
+                        client_name: client.name,
+                        phone_number: client.phone_number
+                    },
+                    isClientFound: true
+                }));
+            } else {
+                setEditModalState(prev => ({
+                    ...prev,
+                    isClientFound: false
+                }));
+            }
+        }
+
+        if (name === 'membership_number' && value.length < 5) {
+            setEditModalState(prev => ({
+                ...prev,
+                isClientFound: false,
+                formData: {
+                    ...prev.formData,
+                    client_name: '',
+                    phone_number: ''
+                }
+            }));
+        }
+    };
+
+    // Функція для обробки зміни пільги
+    const handleDiscountChange = (discountId, modalType = 'create') => {
+        const setState = modalType === 'create' ? setCreateModalState : setEditModalState;
+        
+        setState(prev => {
+            const discountApplied = discountId ? true : false;
+            const basePrice = prev.formData.price || 0;
+            const finalPrice = discountApplied ? Math.round(basePrice * 0.5) : basePrice;
+            
+            return {
+                ...prev,
+                formData: {
+                    ...prev.formData,
+                    discount_type: discountId,
+                    discount_applied: discountApplied,
+                    total_price: finalPrice
+                }
+            };
+        });
+    };
+
+    // Обробка вибору групи послуг
+    const handleServiceGroupChange = (name, option, modalType = 'create') => {
+        const groupId = option && typeof option === 'object' ? option.value : option;
+        
+        if (modalType === 'create') {
             setCreateModalState(prev => ({
                 ...prev,
                 formData: {
                     ...prev.formData,
-                    service_id: option, // Зберігаємо повний об'єкт опції
-                    service_name: label,
-                    lesson_count,
-                    price,
-                    total_price: price * visit_count
+                    service_group_id: option,
+                    service_id: '',
+                    visit_count: '',
+                    price: 0,
+                    total_price: 0
                 }
             }));
-            
-            /*console.log("Оновлений стан:", {
-                service_id: option,
-                service_name: label,
-                lesson_count,
-                price,
-                total_price: price * visit_count
-            }); // Для відлагодження */
+        } else {
+            setEditModalState(prev => ({
+                ...prev,
+                formData: {
+                    ...prev.formData,
+                    service_group_id: option,
+                    service_id: '',
+                    visit_count: '',
+                    price: 0,
+                    total_price: 0
+                }
+            }));
+        }
+        
+        if (groupId) {
+            loadServicesForGroup(groupId, modalType);
         }
     };
 
-    // Функції для фільтрів
-    const resetFilters = () => {
-        setState(prev => ({...prev, selectData: {}}));
+    // Обробка вибору послуги (з урахуванням пільги)
+    const handleServiceChange = (name, option, modalType = 'create') => {
+        if (!option) return;
         
-        const dataReadyForSending = hasOnlyAllowedParams(state.sendData, ['limit', 'page']);
-        if (!dataReadyForSending) {
-            setState(prev => ({...prev, sendData: {limit: prev.sendData.limit, page: 1}}));
+        const services = modalType === 'create' ? createModalState.services : editModalState.services;
+        const serviceOption = services.find(
+            service => service.value === (typeof option === 'object' ? option.value : option)
+        );
+        
+        if (serviceOption) {
+            const { label, visit_count, price } = serviceOption;
+            const currentDiscount = modalType === 'create' ? 
+                createModalState.formData.discount_applied : 
+                editModalState.formData.discount_applied;
+            
+            const finalPrice = currentDiscount ? Math.round(price * 0.5) : price;
+
+            if (modalType === 'create') {
+                setCreateModalState(prev => ({
+                    ...prev,
+                    formData: {
+                        ...prev.formData,
+                        service_id: option,
+                        visit_count,
+                        price,
+                        total_price: finalPrice
+                    }
+                }));
+            } else {
+                setEditModalState(prev => ({
+                    ...prev,
+                    formData: {
+                        ...prev.formData,
+                        service_id: option,
+                        visit_count,
+                        price,
+                        total_price: finalPrice
+                    }
+                }));
+            }
         }
+    };
+
+    // ✅ ПОКРАЩЕНІ ФУНКЦІЇ ДЛЯ ФІЛЬТРІВ З ДЕБАГОМ
+    const resetFilters = () => {
+        console.log('🔍 === RESET FILTERS ДЕБАГ ===');
+        console.log('🔍 Поточний selectData:', state.selectData);
+        
+        if (Object.values(state.selectData).some(value => value)) {
+            setState(prev => ({...prev, selectData: {}}));
+        }
+        
+        const dataReadyForSending = hasOnlyAllowedParams(state.sendData, ['limit', 'page', 'sort_by', 'sort_direction']);
+        if (!dataReadyForSending) {
+            setState(prev => ({
+                ...prev, 
+                sendData: {
+                    limit: prev.sendData.limit, 
+                    page: 1,
+                    sort_by: prev.sendData.sort_by,
+                    sort_direction: prev.sendData.sort_direction,
+                }
+            }));
+        }
+        console.log('🔍 Фільтри скинуто');
     };
 
     const applyFilter = () => {
-        if (Object.values(state.selectData).some(val => val)) {
+        console.log('🔍 === APPLY FILTER ДЕБАГ ===');
+        console.log('🔍 state.selectData:', JSON.stringify(state.selectData, null, 2));
+        
+        const isAnyInputFilled = Object.values(state.selectData).some(value => {
+            if (Array.isArray(value) && !value.length) {
+                return false
+            }
+            return value
+        })
+        
+        console.log('🔍 isAnyInputFilled:', isAnyInputFilled);
+        
+        if (isAnyInputFilled) {
+            console.log('🔍 Викликаємо validateFilters з:', state.selectData);
             const dataValidation = validateFilters(state.selectData);
+            console.log('🔍 Результат validateFilters:', JSON.stringify(dataValidation, null, 2));
+            
             if (!dataValidation.error) {
-                setState(prev => ({...prev, sendData: {...dataValidation, limit: prev.sendData.limit, page: 1}}));
+                const newSendData = {
+                    ...dataValidation, 
+                    limit: state.sendData.limit, 
+                    page: 1,
+                    sort_by: state.sendData.sort_by,
+                    sort_direction: state.sendData.sort_direction,
+                };
+                console.log('🔍 Відправляємо на сервер:', JSON.stringify(newSendData, null, 2));
+                
+                setState(prev => ({
+                    ...prev, 
+                    sendData: newSendData
+                }));
             } else {
+                console.log('🔍 Помилка валідації:', dataValidation.message);
                 notification({ 
                     type: 'warning', 
                     title: 'Помилка', 
@@ -469,61 +688,137 @@ const Bills = () => {
     };
 
     // Функція для навігації по сторінках
-    const onPageChange = useCallback(page => setState(prev => ({...prev, sendData: {...prev.sendData, page}})), []);
+    const onPageChange = useCallback(page => {
+        if (state.sendData.page !== page) {
+            setState(prev => ({...prev, sendData: {...prev.sendData, page}}));
+        }
+    }, [state.sendData.page]);
 
-    // Функції для модального вікна зміни статусу
-    const handleOpenChangeStateModal = (bill, newState) => {
-        setChangeStateModalState({
+    // ✅ ФУНКЦІЇ ДЛЯ МОДАЛЬНОГО ВІКНА ЗВІТІВ
+    const openReportModal = () => {
+        setReportModalState(prev => ({
+            ...prev,
             isOpen: true,
-            loading: false,
-            bill,
-            newState
-        });
+            reportType: '',
+            selectedDate: ''
+        }));
         document.body.style.overflow = 'hidden';
     };
 
-    const handleCloseChangeStateModal = () => {
-        setChangeStateModalState({
-            isOpen: false,
-            loading: false,
-            bill: null,
-            newState: ''
-        });
+    const closeReportModal = () => {
+        setReportModalState(prev => ({ ...prev, isOpen: false }));
         document.body.style.overflow = 'auto';
     };
-    
-    // Функція для підтвердження зміни статусу
-    const handleChangeState = async () => {
-        if (!changeStateModalState.bill || !changeStateModalState.newState) return;
-        
+
+    const handleReportTypeChange = (type) => {
+        setReportModalState(prev => ({
+            ...prev,
+            reportType: type,
+            selectedDate: type === 'today' ? new Date().toISOString().split('T')[0] : ''
+        }));
+    };
+
+    const handleDateChange = (event) => {
+        setReportModalState(prev => ({
+            ...prev,
+            selectedDate: event.target.value
+        }));
+    };
+
+    // ✅ ОНОВЛЕНА ФУНКЦІЯ ГЕНЕРАЦІЇ ЗВІТУ
+    const handleGenerateReport = async () => {
         try {
-            setChangeStateModalState(prev => ({...prev, loading: true}));
+            // Валідація
+            if (!reportModalState.reportType) {
+                notification({
+                    type: 'warning',
+                    title: "Помилка",
+                    message: "Оберіть тип звіту",
+                    placement: 'top',
+                });
+                return;
+            }
+
+            if (reportModalState.reportType === 'date' && !reportModalState.selectedDate) {
+                notification({
+                    type: 'warning',
+                    title: "Помилка",
+                    message: "Оберіть дату для звіту",
+                    placement: 'top',
+                });
+                return;
+            }
+
+            setReportModalState(prev => ({...prev, loading: true}));
             
-            await fetchFunction(`/api/sportscomplex/bills/${changeStateModalState.bill.id}/status`, {
-                method: 'put',
-                data: {
-                    status: changeStateModalState.newState
-                }
+            // Формуємо фільтри в залежності від типу звіту
+            let reportFilters = {};
+            
+            if (reportModalState.reportType === 'date' && reportModalState.selectedDate) {
+                reportFilters.date = reportModalState.selectedDate;
+            } else if (reportModalState.reportType === 'today') {
+                const today = new Date().toISOString().split('T')[0];
+                reportFilters.date = today;
+            }
+            // Для 'all' не додаємо фільтри по даті
+            
+            // Отримуємо дані для звіту
+            const reportResponse = await fetchFunction('/api/sportscomplex/bills/report', {
+                method: 'post',
+                data: reportFilters
+            });
+            
+            if (!reportResponse.data.success || !reportResponse.data.data.length) {
+                notification({
+                    type: 'warning',
+                    title: "Попередження",
+                    message: "Немає даних для формування звіту",
+                    placement: 'top',
+                });
+                return;
+            }
+            
+            // Генеруємо Word файл
+            const response = await fetchFunction('/api/sportscomplex/bills/export-word', {
+                method: 'post',
+                data: reportResponse.data.data,
+                responseType: 'blob'
             });
             
             notification({
-                type: 'success',
-                placement: 'top',
+                placement: "top",
+                duration: 2,
                 title: 'Успіх',
-                message: `Статус рахунку успішно змінено на "${changeStateModalState.newState}"`,
+                message: "Звіт успішно сформовано.",
+                type: 'success'
             });
             
-            // Оновлюємо дані в таблиці
-            retryFetch('/api/sportscomplex/bills/filter', {
-                method: 'post',
-                data: state.sendData,
-            });
+            // Скачуємо файл
+            const blob = response.data;
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
             
-            // Закриваємо модальне вікно
-            handleCloseChangeStateModal();
+            // Формуємо назву файлу в залежності від типу звіту
+            let fileName = 'bills-report';
+            if (reportModalState.reportType === 'today') {
+                fileName += `-today-${new Date().toISOString().split('T')[0]}`;
+            } else if (reportModalState.reportType === 'date') {
+                fileName += `-${reportModalState.selectedDate}`;
+            } else {
+                fileName += `-all-time-${new Date().toISOString().split('T')[0]}`;
+            }
+            fileName += '.docx';
+            
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+            
+            closeReportModal();
+            
         } catch (error) {
-            console.error("Помилка при зміні статусу:", error);
-            
             if (error?.response?.status === 401) {
                 notification({
                     type: 'warning',
@@ -538,20 +833,238 @@ const Bills = () => {
             notification({
                 type: 'warning',
                 title: "Помилка",
-                message: error?.response?.data?.message || error.message,
+                message: error?.response?.data?.message || "Помилка генерації звіту",
                 placement: 'top',
             });
         } finally {
-            setChangeStateModalState(prev => ({...prev, loading: false}));
+            setReportModalState(prev => ({...prev, loading: false}));
         }
     };
+
+    // Функції для модального вікна створення
+    const openCreateModal = () => {
+        setCreateModalState(prev => ({
+            ...prev,
+            isOpen: true,
+            formData: {
+                membership_number: '',
+                client_name: '',
+                phone_number: '',
+                service_group_id: '',
+                service_id: '',
+                visit_count: '',
+                price: 0,
+                total_price: 0,
+                discount_type: '',
+                discount_applied: false,
+            },
+            isClientFound: false
+        }));
+        document.body.style.overflow = 'hidden';
+    };
     
-    // Функція для завантаження квитанції
-    const handleDownloadReceipt = async (billId) => {
+    const closeCreateModal = () => {
+        setCreateModalState(prev => ({ ...prev, isOpen: false }));
+        document.body.style.overflow = 'auto';
+    };
+
+    // Функції для модального вікна редагування
+    const handleOpenEditModal = async (bill) => {
+        try {
+            const response = await fetchFunction(`/api/sportscomplex/bills/${bill.id}`, {
+                method: 'get'
+            });
+            
+            const billData = response.data;
+            
+            setEditModalState(prev => ({
+                ...prev,
+                isOpen: true,
+                billId: bill.id,
+                formData: {
+                    membership_number: billData.membership_number,
+                    client_name: billData.client_name,
+                    phone_number: billData.phone_number,
+                    service_group_id: { value: billData.service_group_id, label: billData.service_group },
+                    service_id: { value: billData.service_id, label: billData.service_name },
+                    visit_count: billData.visit_count,
+                    price: billData.price,
+                    total_price: billData.total_price,
+                    discount_type: billData.discount_type || '',
+                    discount_applied: !!billData.discount_type,
+                },
+                isClientFound: true
+            }));
+            
+            if (billData.service_group_id) {
+                loadServicesForGroup(billData.service_group_id, 'edit');
+            }
+            
+            document.body.style.overflow = 'hidden';
+        } catch (error) {
+            notification({
+                type: 'warning',
+                title: "Помилка",
+                message: "Не вдалося завантажити дані рахунку",
+                placement: 'top',
+            });
+        }
+    };
+
+    const closeEditModal = () => {
+        setEditModalState(prev => ({ ...prev, isOpen: false, billId: null }));
+        document.body.style.overflow = 'auto';
+    };
+
+    // Функція для створення рахунку
+    const handleCreateFormSubmit = async () => {
+        const { membership_number, client_name, phone_number, service_id, discount_type } = createModalState.formData;
+        
+        if (!membership_number || !client_name || !phone_number || !service_id) {
+            notification({
+                type: 'warning',
+                placement: 'top',
+                title: 'Помилка',
+                message: 'Всі поля форми обов\'язкові для заповнення',
+            });
+            return;
+        }
+
+        // ПЕРЕВІРКА ЧИ ЗНАЙДЕНО КЛІЄНТА
+        if (!createModalState.isClientFound) {
+            notification({
+                type: 'warning',
+                placement: 'top',
+                title: 'Помилка',
+                message: 'Клієнта з таким номером абонемента не знайдено. Перевірте номер або створіть клієнта в розділі "Клієнти".',
+            });
+            return;
+        }
+        
+        try {
+            setCreateModalState(prev => ({...prev, loading: true}));
+            
+            const serviceIdValue = typeof service_id === 'object' ? service_id.value : service_id;
+            
+            await fetchFunction('/api/sportscomplex/bills', {
+                method: 'post',
+                data: {
+                    membership_number,
+                    client_name,
+                    phone_number,
+                    service_id: serviceIdValue,
+                    discount_type: discount_type || null
+                }
+            });
+            
+            notification({
+                type: 'success',
+                placement: 'top',
+                title: 'Успіх',
+                message: 'Рахунок успішно створено',
+            });
+            
+            retryFetch('/api/sportscomplex/bills/filter', {
+                method: 'post',
+                data: state.sendData,
+            });
+            
+            closeCreateModal();
+        } catch (error) {
+            if (error?.response?.status === 401) {
+                notification({
+                    type: 'warning',
+                    title: "Помилка",
+                    message: "Не авторизований",
+                    placement: 'top',
+                });
+                store.logOff();
+                return navigate('/');
+            }
+            
+            notification({
+                type: 'warning',
+                title: "Помилка",
+                message: error?.response?.data?.message || error?.response?.data?.error || error.message,
+                placement: 'top',
+            });
+        } finally {
+            setCreateModalState(prev => ({...prev, loading: false}));
+        }
+    };
+
+    // Функція для редагування рахунку
+    const handleEditFormSubmit = async () => {
+        const { membership_number, client_name, phone_number, service_id, discount_type } = editModalState.formData;
+        
+        if (!membership_number || !client_name || !phone_number || !service_id) {
+            notification({
+                type: 'warning',
+                placement: 'top',
+                title: 'Помилка',
+                message: 'Всі поля форми обов\'язкові для заповнення',
+            });
+            return;
+        }
+        
+        try {
+            setEditModalState(prev => ({...prev, loading: true}));
+            
+            const serviceIdValue = typeof service_id === 'object' ? service_id.value : service_id;
+            
+            await fetchFunction(`/api/sportscomplex/bills/${editModalState.billId}`, {
+                method: 'put',
+                data: {
+                    membership_number,
+                    client_name,
+                    phone_number,
+                    service_id: serviceIdValue,
+                    discount_type: discount_type || null
+                }
+            });
+            
+            notification({
+                type: 'success',
+                placement: 'top',
+                title: 'Успіх',
+                message: 'Рахунок успішно оновлено',
+            });
+            
+            retryFetch('/api/sportscomplex/bills/filter', {
+                method: 'post',
+                data: state.sendData,
+            });
+            
+            closeEditModal();
+        } catch (error) {
+            if (error?.response?.status === 401) {
+                notification({
+                    type: 'warning',
+                    title: "Помилка",
+                    message: "Не авторизований",
+                    placement: 'top',
+                });
+                store.logOff();
+                return navigate('/');
+            }
+            
+            notification({
+                type: 'warning',
+                title: "Помилка",
+                message: error?.response?.data?.message || error?.response?.data?.error || error.message,
+                placement: 'top',
+            });
+        } finally {
+            setEditModalState(prev => ({...prev, loading: false}));
+        }
+    };
+
+    // Функція для скачування рахунку
+    const handleDownloadBill = async (billId) => {
         try {
             setState(prev => ({...prev, confirmLoading: true}));
             
-            const response = await fetchFunction(`/api/sportscomplex/bills/${billId}/receipt`, {
+            const response = await fetchFunction(`/api/sportscomplex/bills/${billId}/download`, {
                 method: 'get',
                 responseType: 'blob'
             });
@@ -560,7 +1073,7 @@ const Bills = () => {
                 placement: "top",
                 duration: 2,
                 title: 'Успіх',
-                message: "Квитанцію успішно сформовано.",
+                message: "Файл успішно сформовано.",
                 type: 'success'
             });
             
@@ -568,7 +1081,7 @@ const Bills = () => {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `receipt-${billId}.pdf`;
+            a.download = `bill-${billId}.pdf`;
             document.body.appendChild(a);
             a.click();
             a.remove();
@@ -594,110 +1107,6 @@ const Bills = () => {
             setState(prev => ({...prev, confirmLoading: false}));
         }
     };
-    
-    // Функції для модального вікна створення рахунку
-    const openCreateModal = () => {
-        // Генеруємо номер рахунку - 6 випадкових цифр
-        const accountNumber = Math.floor(100000 + Math.random() * 900000).toString();
-        
-        setCreateModalState(prev => ({
-            ...prev,
-            isOpen: true,
-            formData: {
-                membership_number: accountNumber,
-                client_name: '',
-                service_group_id: '',
-                service_id: '',
-                visit_count: 1,
-                service_name: '',
-                lesson_count: '',
-                price: 0,
-                total_price: 0
-            }
-        }));
-        document.body.style.overflow = 'hidden';
-    };
-    
-    const closeCreateModal = () => {
-        setCreateModalState(prev => ({
-            ...prev,
-            isOpen: false
-        }));
-        document.body.style.overflow = 'auto';
-    };
-    
-    // Функція для обробки відправки форми створення рахунку
-    const handleCreateFormSubmit = async () => {
-        const { membership_number, client_name, service_id, visit_count } = createModalState.formData;
-        
-        // Валідація форми
-        if (!membership_number || !client_name || !service_id || !visit_count) {
-            notification({
-                type: 'warning',
-                placement: 'top',
-                title: 'Помилка',
-                message: 'Всі поля форми обов\'язкові для заповнення',
-            });
-            return;
-        }
-        
-        try {
-            setCreateModalState(prev => ({...prev, loading: true}));
-            
-            // Перевіряємо, що service_id це об'єкт з компоненту Select і витягуємо ID
-            const serviceIdValue = typeof service_id === 'object' ? service_id.value : service_id;
-            
-            // Відправка даних на сервер з правильним форматом ID
-            await fetchFunction('/api/sportscomplex/bills', {
-                method: 'post',
-                data: {
-                    membership_number,
-                    client_name,
-                    service_id: serviceIdValue, // Використовуємо числове значення ID
-                    visit_count: parseInt(visit_count),
-                    status: 'В процесі'
-                }
-            });
-            
-            notification({
-                type: 'success',
-                placement: 'top',
-                title: 'Успіх',
-                message: 'Рахунок успішно створено',
-            });
-            
-            // Оновлення даних в таблиці
-            retryFetch('/api/sportscomplex/bills/filter', {
-                method: 'post',
-                data: state.sendData,
-            });
-            
-            // Закриття модального вікна
-            closeCreateModal();
-        } catch (error) {
-            console.error("Помилка створення рахунку:", error.response?.data || error.message); // Додаємо детальне логування
-            
-            if (error?.response?.status === 401) {
-                notification({
-                    type: 'warning',
-                    title: "Помилка",
-                    message: "Не авторизований",
-                    placement: 'top',
-                });
-                store.logOff();
-                return navigate('/');
-            }
-            
-            notification({
-                type: 'warning',
-                title: "Помилка",
-                message: error?.response?.data?.message || error?.response?.data?.error || error.message,
-                placement: 'top',
-            });
-        } finally {
-            setCreateModalState(prev => ({...prev, loading: false}));
-        }
-    };
 
     // Обробка помилок
     if (status === STATUS.ERROR) {
@@ -713,19 +1122,25 @@ const Bills = () => {
                     <div className="table-header">
                         <h2 className="title title--sm">
                             {data?.items?.length ? 
-                                `Показує ${startRecord}-${endRecord} з ${data?.totalItems}` : 
+                                `Показує ${startRecord !== endRecord ? `${startRecord}-${endRecord}` : startRecord} з ${data?.totalItems || 1}` : 
                                 'Записів не знайдено'
                             }
                         </h2>
                         <div className="table-header__buttons">
-
-                            {/* Кнопка "Створити" замість "Додати" */}
                             <Button 
                                 className="btn--primary"
                                 onClick={openCreateModal}
                                 icon={addIcon}
                             >
                                 Створити
+                            </Button>
+                            <Button 
+                                className="btn--primary"
+                                onClick={openReportModal}
+                                icon={downloadIcon}
+                                loading={state.confirmLoading}
+                            >
+                                Звітність
                             </Button>
                             <Dropdown 
                                 icon={dropDownIcon} 
@@ -735,20 +1150,27 @@ const Bills = () => {
                                 caption={`Записів: ${state.sendData.limit}`} 
                                 menu={itemMenu} 
                             />
-                            <Button 
-                                className="table-filter-trigger" 
-                                onClick={filterHandleClick} 
-                                icon={filterIcon}
-                            >
-                                Фільтри
+                            <Button
+                                className={`table-filter-trigger ${hasActiveFilters ? 'has-active-filters' : ''}`}
+                                onClick={filterHandleClick}
+                                icon={filterIcon}>
+                                Фільтри {hasActiveFilters && `(${Object.keys(state.selectData).filter(key => state.selectData[key]).length})`}
                             </Button>
+                            
+                            {/* ✅ ФІЛЬТР ДЛЯ BILLS з автоматичним визначенням полів */}
+                            <SportsFilterDropdown
+                                isOpen={state.isFilterOpen}
+                                onClose={closeFilterDropdown}
+                                filterData={state.selectData}
+                                onFilterChange={onHandleChange}
+                                onApplyFilter={applyFilter}
+                                onResetFilters={resetFilters}
+                                searchIcon={searchIcon}
+                            />
                         </div>
                     </div>
                     <div className="table-main">
-                        <div 
-                            style={{width: data?.items?.length > 0 ? 'auto' : '100%'}} 
-                            className={classNames("table-and-pagination-wrapper", {"table-and-pagination-wrapper--active": state.isOpen})}
-                        >
+                        <div className="table-and-pagination-wrapper">
                             <Table 
                                 columns={Array.isArray(columnTable) ? columnTable.filter(Boolean) : []} 
                                 dataSource={Array.isArray(tableData) ? tableData : []}
@@ -761,55 +1183,102 @@ const Bills = () => {
                                 onPageChange={onPageChange} 
                             />
                         </div>
-                        <div className={`table-filter ${state.isOpen ? "table-filter--active" : ""}`}>
-                            <h3 className="title title--sm">Фільтри</h3>
-                            <div className="btn-group">
-                                <Button onClick={applyFilter}>Застосувати</Button>
-                                <Button className="btn--secondary" onClick={resetFilters}>Скинути</Button>
-                            </div>
-                            <div className="table-filter__item">
-                                <Input 
-                                    icon={searchIcon} 
-                                    name="membership_number" 
-                                    placeholder="Номер рахунку" 
-                                    value={state.selectData?.membership_number || ''} 
-                                    onChange={onHandleChange} 
-                                />
-                            </div>
-                            <div className="table-filter__item">
-                                <Input 
-                                    icon={searchIcon} 
-                                    name="client_name" 
-                                    placeholder="Платник" 
-                                    value={state.selectData?.client_name || ''} 
-                                    onChange={onHandleChange} 
-                                />
-                            </div>
-                            <div className="table-filter__item">
-                                <Input 
-                                    icon={searchIcon} 
-                                    name="service_name" 
-                                    placeholder="Назва послуги" 
-                                    value={state.selectData?.service_name || ''} 
-                                    onChange={onHandleChange} 
-                                />
-                            </div>
-                            <div className="table-filter__item">
-                                <h4 className="input-description">Стан</h4>
-                                <Input 
-                                    icon={searchIcon} 
-                                    name="status" 
-                                    placeholder="Стан рахунку" 
-                                    value={state.selectData?.status || ''} 
-                                    onChange={onHandleChange} 
-                                />
-                            </div>
-                        </div>
                     </div>
                 </div>
             )}
             
-            {/* Модальне вікно для створення нового рахунку */}
+            {/* ✅ НОВЕ МОДАЛЬНЕ ВІКНО ДЛЯ ВИБОРУ ТИПУ ЗВІТУ */}
+            <Transition in={reportModalState.isOpen} timeout={200} unmountOnExit nodeRef={reportModalRef}>
+                {transitionState => (
+                    <Modal
+                        className={transitionState === 'entered' ? "modal-window-wrapper--active" : ""}
+                        onClose={closeReportModal}
+                        onOk={handleGenerateReport}
+                        confirmLoading={reportModalState.loading}
+                        cancelText="Скасувати"
+                        okText="Створити звіт"
+                        title="Створення звіту"
+                        width="500px"
+                    >
+                        <div className="form-container">
+                            <FormItem label="Оберіть тип звіту" required fullWidth>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                        <input
+                                            type="radio"
+                                            name="reportType"
+                                            value="today"
+                                            checked={reportModalState.reportType === 'today'}
+                                            onChange={(e) => handleReportTypeChange(e.target.value)}
+                                            style={{ marginRight: '8px' }}
+                                        />
+                                        <span>За сьогодні</span>
+                                    </label>
+                                    
+                                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                        <input
+                                            type="radio"
+                                            name="reportType"
+                                            value="date"
+                                            checked={reportModalState.reportType === 'date'}
+                                            onChange={(e) => handleReportTypeChange(e.target.value)}
+                                            style={{ marginRight: '8px' }}
+                                        />
+                                        <span>За певну дату</span>
+                                    </label>
+                                    
+                                    {reportModalState.reportType === 'date' && (
+                                        <div style={{ marginLeft: '24px', marginTop: '8px' }}>
+                                            <input
+                                                type="date"
+                                                value={reportModalState.selectedDate}
+                                                onChange={handleDateChange}
+                                                style={{
+                                                    padding: '8px',
+                                                    border: '1px solid #ddd',
+                                                    borderRadius: '4px',
+                                                    fontSize: '14px'
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                                        <input
+                                            type="radio"
+                                            name="reportType"
+                                            value="all"
+                                            checked={reportModalState.reportType === 'all'}
+                                            onChange={(e) => handleReportTypeChange(e.target.value)}
+                                            style={{ marginRight: '8px' }}
+                                        />
+                                        <span>За весь час</span>
+                                    </label>
+                                </div>
+                            </FormItem>
+                            
+                            {reportModalState.reportType && (
+                                <div style={{ 
+                                    padding: '12px', 
+                                    backgroundColor: '#f0f9ff', 
+                                    border: '1px solid #bae6fd', 
+                                    borderRadius: '4px',
+                                    fontSize: '14px',
+                                    marginTop: '16px'
+                                }}>
+                                    <strong>Опис:</strong> Буде створено Word документ з таблицею рахунків
+                                    {reportModalState.reportType === 'today' && ' за сьогоднішню дату'}
+                                    {reportModalState.reportType === 'date' && reportModalState.selectedDate && ` за ${reportModalState.selectedDate}`}
+                                    {reportModalState.reportType === 'all' && ' за весь період'}
+                                    . Таблиця буде містити всі дані аналогічно до відображення на сторінці.
+                                </div>
+                            )}
+                        </div>
+                    </Modal>
+                )}
+            </Transition>
+            
+            {/* Модальні вікна створення та редагування - код залишається без змін */}
             <Transition in={createModalState.isOpen} timeout={200} unmountOnExit nodeRef={addFormRef}>
                 {transitionState => (
                     <Modal
@@ -820,26 +1289,40 @@ const Bills = () => {
                         cancelText="Скасувати"
                         okText="Зберегти"
                         title="Створення нового рахунку"
-                        width="600px"
+                        width="700px"
                     >
                         <div className="form-container">
                             <FormItem 
-                                label="Номер рахунку" 
+                                label="Номер абонемента" 
                                 required 
                                 fullWidth
-                                tooltip="Номер рахунку генерується автоматично"
                             >
                                 <Input
                                     name="membership_number"
                                     value={createModalState.formData.membership_number}
                                     onChange={onCreateFormChange}
-                                    placeholder="Введіть номер рахунку"
-                                    disabled={true} // Номер рахунку генерується автоматично
+                                    placeholder="Введіть номер абонемента"
                                 />
                             </FormItem>
                             
+                            {createModalState.formData.membership_number.length >= 5 && (
+                                <div style={{ 
+                                    padding: '8px 12px', 
+                                    borderRadius: '4px',
+                                    fontSize: '14px',
+                                    marginBottom: '16px',
+                                    backgroundColor: createModalState.isClientFound ? '#e6f7ff' : '#fff2e8',
+                                    border: `1px solid ${createModalState.isClientFound ? '#91d5ff' : '#ffcc99'}`,
+                                    color: createModalState.isClientFound ? '#096dd9' : '#d46b08'
+                                }}>
+                                    {createModalState.isClientFound ? 
+                                        '✅ Клієнта знайдено! Дані автоматично заповнені.' : 
+                                        '⚠️ Клієнта з таким номером абонемента не знайдено.'}
+                                </div>
+                            )}
+                            
                             <FormItem 
-                                label="Платник" 
+                                label="ПІБ клієнта" 
                                 required 
                                 fullWidth
                             >
@@ -847,7 +1330,34 @@ const Bills = () => {
                                     name="client_name"
                                     value={createModalState.formData.client_name}
                                     onChange={onCreateFormChange}
-                                    placeholder="Введіть ПІБ платника"
+                                    placeholder={createModalState.isClientFound ? 
+                                        "Автоматично заповнено" : 
+                                        "Спочатку введіть номер абонемента"}
+                                    disabled={createModalState.isClientFound}
+                                    style={{ 
+                                        backgroundColor: createModalState.isClientFound ? '#f5f5f5' : 'white',
+                                        color: createModalState.isClientFound ? '#666' : 'inherit'
+                                    }}
+                                />
+                            </FormItem>
+                            
+                            <FormItem 
+                                label="Номер телефону" 
+                                required 
+                                fullWidth
+                            >
+                                <Input
+                                    name="phone_number"
+                                    value={createModalState.formData.phone_number}
+                                    onChange={onCreateFormChange}
+                                    placeholder={createModalState.isClientFound ? 
+                                        "Автоматично заповнено" : 
+                                        "Спочатку введіть номер абонемента"}
+                                    disabled={createModalState.isClientFound}
+                                    style={{ 
+                                        backgroundColor: createModalState.isClientFound ? '#f5f5f5' : 'white',
+                                        color: createModalState.isClientFound ? '#666' : 'inherit'
+                                    }}
                                 />
                             </FormItem>
                             
@@ -859,100 +1369,256 @@ const Bills = () => {
                                 <Select
                                     placeholder="Виберіть групу послуг"
                                     value={createModalState.formData.service_group_id}
-                                    onChange={handleServiceGroupChange}
+                                    onChange={(name, option) => handleServiceGroupChange(name, option, 'create')}
                                     options={createModalState.serviceGroups}
                                 />
                             </FormItem>
                             
                             <FormItem 
-                                label="Назва послуги" 
+                                label="Послуга" 
                                 required 
                                 fullWidth
                             >
                                 <Select
                                     placeholder="Виберіть послугу"
                                     value={createModalState.formData.service_id}
-                                    onChange={handleServiceChange}
+                                    onChange={(name, option) => handleServiceChange(name, option, 'create')}
                                     options={createModalState.services}
                                     disabled={!createModalState.formData.service_group_id}
-                                    // Додайте властивості для відлагодження
-                                    isClearable={true}
-                                    isSearchable={true}
                                 />
+                            </FormItem>
+                            
+                            <FormItem 
+                                label="Пільги (знижка 50%)" 
+                                fullWidth
+                            >
+                                <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+                                    {DISCOUNT_OPTIONS.map(discount => (
+                                        <div key={discount.id} style={{ marginBottom: '8px' }}>
+                                            <label style={{ display: 'flex', alignItems: 'flex-start', cursor: 'pointer', fontSize: '14px' }}>
+                                                <input
+                                                    type="radio"
+                                                    name="discount_type"
+                                                    value={discount.id}
+                                                    checked={createModalState.formData.discount_type === discount.id}
+                                                    onChange={(e) => handleDiscountChange(e.target.value, 'create')}
+                                                    style={{ marginRight: '8px', marginTop: '2px' }}
+                                                />
+                                                <span style={{ lineHeight: '1.4' }}>{discount.label}</span>
+                                            </label>
+                                        </div>
+                                    ))}
+                                    <div style={{ marginBottom: '8px' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '14px' }}>
+                                            <input
+                                                type="radio"
+                                                name="discount_type"
+                                                value=""
+                                                checked={!createModalState.formData.discount_type}
+                                                onChange={(e) => handleDiscountChange('', 'create')}
+                                                style={{ marginRight: '8px' }}
+                                            />
+                                            <span>Без пільги</span>
+                                        </label>
+                                    </div>
+                                </div>
                             </FormItem>
                             
                             <div className="form-row" style={{display: 'flex', gap: '16px'}}>
                                 <FormItem 
-                                    label="Одиниці" 
-                                    fullWidth
-                                >
-                                    <Input
-                                        name="lesson_count"
-                                        value={createModalState.formData.lesson_count}
-                                        disabled={true} // Заповнюється автоматично при виборі послуги
-                                    />
-                                </FormItem>
-                                
-                                <FormItem 
-                                    label="Кількість" 
-                                    required 
+                                    label="Кількість відвідувань" 
                                     fullWidth
                                 >
                                     <Input
                                         name="visit_count"
-                                        type="number"
-                                        min="1"
                                         value={createModalState.formData.visit_count}
-                                        onChange={onCreateFormChange}
-                                        placeholder="Кількість"
-                                    />
-                                </FormItem>
-                            </div>
-                            
-                            <div className="form-row" style={{display: 'flex', gap: '16px'}}>
-                                <FormItem 
-                                    label="Ціна за одиницю" 
-                                    fullWidth
-                                >
-                                    <Input
-                                        name="price"
-                                        value={createModalState.formData.price ? `${createModalState.formData.price} грн` : ''}
-                                        disabled={true} // Заповнюється автоматично при виборі послуги
+                                        disabled={true}
                                     />
                                 </FormItem>
                                 
                                 <FormItem 
-                                    label="Загальна вартість" 
+                                    label="Ціна" 
                                     fullWidth
                                 >
                                     <Input
                                         name="total_price"
                                         value={createModalState.formData.total_price ? `${createModalState.formData.total_price} грн` : ''}
-                                        disabled={true} // Розраховується автоматично
+                                        disabled={true}
                                     />
                                 </FormItem>
                             </div>
+                            
+                            {createModalState.formData.discount_applied && (
+                                <div style={{ 
+                                    padding: '10px', 
+                                    backgroundColor: '#e6f7ff', 
+                                    border: '1px solid #91d5ff', 
+                                    borderRadius: '4px',
+                                    fontSize: '14px',
+                                    color: '#096dd9'
+                                }}>
+                                    ✅ Застосована знижка 50% за пільгою
+                                </div>
+                            )}
                         </div>
                     </Modal>
                 )}
             </Transition>
             
-            {/* Модальне вікно для зміни статусу рахунку */}
-            <Transition in={changeStateModalState.isOpen} timeout={200} unmountOnExit nodeRef={changeStateRef}>
+            {/* Модальне вікно редагування */}
+            <Transition in={editModalState.isOpen} timeout={200} unmountOnExit nodeRef={editFormRef}>
                 {transitionState => (
                     <Modal
                         className={transitionState === 'entered' ? "modal-window-wrapper--active" : ""}
-                        onClose={handleCloseChangeStateModal}
-                        onOk={handleChangeState}
-                        confirmLoading={changeStateModalState.loading}
+                        onClose={closeEditModal}
+                        onOk={handleEditFormSubmit}
+                        confirmLoading={editModalState.loading}
                         cancelText="Скасувати"
-                        okText={`Так, змінити на "${changeStateModalState.newState}"`}
-                        title="Зміна статусу рахунку"
+                        okText="Зберегти зміни"
+                        title="Редагування рахунку"
+                        width="700px"
                     >
-                        <p className="paragraph">
-                            Ви впевнені, що бажаєте змінити статус рахунку №{changeStateModalState.bill?.membership_number} 
-                            з "{changeStateModalState.bill?.status}" на "{changeStateModalState.newState}"?
-                        </p>
+                        {/* Аналогічний контент як у створенні, але з editModalState та 'edit' modalType */}
+                        <div className="form-container">
+                            <FormItem 
+                                label="Номер абонемента" 
+                                required 
+                                fullWidth
+                            >
+                                <Input
+                                    name="membership_number"
+                                    value={editModalState.formData.membership_number}
+                                    onChange={onEditFormChange}
+                                    placeholder="Введіть номер абонемента"
+                                />
+                            </FormItem>
+                            
+                            <FormItem 
+                                label="ПІБ клієнта" 
+                                required 
+                                fullWidth
+                            >
+                                <Input
+                                    name="client_name"
+                                    value={editModalState.formData.client_name}
+                                    onChange={onEditFormChange}
+                                    placeholder="Введіть ПІБ клієнта"
+                                />
+                            </FormItem>
+                            
+                            <FormItem 
+                                label="Номер телефону" 
+                                required 
+                                fullWidth
+                            >
+                                <Input
+                                    name="phone_number"
+                                    value={editModalState.formData.phone_number}
+                                    onChange={onEditFormChange}
+                                    placeholder="Введіть номер телефону"
+                                />
+                            </FormItem>
+                            
+                            <FormItem 
+                                label="Група послуг" 
+                                required 
+                                fullWidth
+                            >
+                                <Select
+                                    placeholder="Виберіть групу послуг"
+                                    value={editModalState.formData.service_group_id}
+                                    onChange={(name, option) => handleServiceGroupChange(name, option, 'edit')}
+                                    options={editModalState.serviceGroups}
+                                />
+                            </FormItem>
+                            
+                            <FormItem 
+                                label="Послуга" 
+                                required 
+                                fullWidth
+                            >
+                                <Select
+                                    placeholder="Виберіть послугу"
+                                    value={editModalState.formData.service_id}
+                                    onChange={(name, option) => handleServiceChange(name, option, 'edit')}
+                                    options={editModalState.services}
+                                    disabled={!editModalState.formData.service_group_id}
+                                />
+                            </FormItem>
+                            
+                            <FormItem 
+                                label="Пільги (знижка 50%)" 
+                                fullWidth
+                            >
+                                <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+                                    {DISCOUNT_OPTIONS.map(discount => (
+                                        <div key={discount.id} style={{ marginBottom: '8px' }}>
+                                            <label style={{ display: 'flex', alignItems: 'flex-start', cursor: 'pointer', fontSize: '14px' }}>
+                                                <input
+                                                    type="radio"
+                                                    name="discount_type_edit"
+                                                    value={discount.id}
+                                                    checked={editModalState.formData.discount_type === discount.id}
+                                                    onChange={(e) => handleDiscountChange(e.target.value, 'edit')}
+                                                    style={{ marginRight: '8px', marginTop: '2px' }}
+                                                />
+                                                <span style={{ lineHeight: '1.4' }}>{discount.label}</span>
+                                            </label>
+                                        </div>
+                                    ))}
+                                    <div style={{ marginBottom: '8px' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '14px' }}>
+                                            <input
+                                                type="radio"
+                                                name="discount_type_edit"
+                                                value=""
+                                                checked={!editModalState.formData.discount_type}
+                                                onChange={(e) => handleDiscountChange('', 'edit')}
+                                                style={{ marginRight: '8px' }}
+                                            />
+                                            <span>Без пільги</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </FormItem>
+                            
+                            <div className="form-row" style={{display: 'flex', gap: '16px'}}>
+                                <FormItem 
+                                    label="Кількість відвідувань" 
+                                    fullWidth
+                                >
+                                    <Input
+                                        name="visit_count"
+                                        value={editModalState.formData.visit_count}
+                                        disabled={true}
+                                    />
+                                </FormItem>
+                                
+                                <FormItem 
+                                    label="Ціна" 
+                                    fullWidth
+                                >
+                                    <Input
+                                        name="total_price"
+                                        value={editModalState.formData.total_price ? `${editModalState.formData.total_price} грн` : ''}
+                                        disabled={true}
+                                    />
+                                </FormItem>
+                            </div>
+                            
+                            {editModalState.formData.discount_applied && (
+                                <div style={{ 
+                                    padding: '10px', 
+                                    backgroundColor: '#e6f7ff', 
+                                    border: '1px solid #91d5ff', 
+                                    borderRadius: '4px',
+                                    fontSize: '14px',
+                                    color: '#096dd9'
+                                }}>
+                                    ✅ Застосована знижка 50% за пільгою
+                                </div>
+                            )}
+                        </div>
                     </Modal>
                 )}
             </Transition>
