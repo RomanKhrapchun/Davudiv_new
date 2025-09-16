@@ -90,9 +90,9 @@ class SportsComplexController {
 
     async getServicesByGroup(request, reply) {
         try {
-            //console.log("getServicesByGroup викликано з ID:", request.params.id);
+            console.log("getServicesByGroup викликано з ID:", request.params.id);
             const data = await sportsComplexService.getServicesByGroup(request.params.id);
-            //console.log("Дані для відповіді:", data);
+            console.log("Дані для відповіді:", data);
             
             // Переконайтеся, що повертаємо масив навіть якщо даних немає
             return reply.send(Array.isArray(data) ? data : []);
@@ -132,7 +132,7 @@ class SportsComplexController {
             return reply.code(500).send({ error: "Не вдалося отримати рахунок." });
         }
     }
-
+    
     async updateBillStatus(request, reply) {
         try {
             const result = await sportsComplexService.updateBillStatus(request);
@@ -192,6 +192,168 @@ class SportsComplexController {
         } catch (error) {
             logger.error("[updateService]", error);
             return reply.code(500).send({ error: "Не вдалося оновити послугу." });
+        }
+    }
+
+    async searchClients(request, reply) {
+        try {
+            const data = await sportsComplexService.searchClients(request);
+            return reply.send(data);
+        } catch (error) {
+            logger.error("[searchClients]", error);
+            return reply.code(500).send({ error: "Не вдалося знайти клієнтів." });
+        }
+    }
+
+    async updateBill(request, reply) {
+        try {
+            const result = await sportsComplexService.updateBill(request);
+            return reply.send(result);
+        } catch (error) {
+            logger.error("[updateBill]", error);
+            return reply.code(500).send({ error: "Не вдалося оновити рахунок." });
+        }
+    }
+
+    async downloadBill(request, reply) {
+        try {
+            const fileBuffer = await sportsComplexService.downloadBill(request);
+            reply.header("Content-Disposition", `attachment; filename=bill-${request.params.id}.pdf`);
+            reply.type("application/pdf");
+            return reply.send(fileBuffer);
+        } catch (error) {
+            logger.error("[downloadBill]", error);
+            return reply.code(500).send({ error: "Помилка генерації файлу." });
+        }
+    }
+
+    async findClientsByFilter(request, reply) {
+        try {
+            const data = await sportsComplexService.findClientsByFilter(request);
+            return reply.send(data);
+        } catch (error) {
+            logger.error("[findClientsByFilter]", error);
+            return reply.code(500).send({ error: "Не вдалося застосувати фільтр до клієнтів." });
+        }
+    }
+
+    async createClient(request, reply) {
+        try {
+            const result = await sportsComplexService.createClient(request);
+            return reply.send(result);
+        } catch (error) {
+            logger.error("[createClient]", error);
+            return reply.code(500).send({ error: "Не вдалося створити клієнта." });
+        }
+    }
+
+    async updateClient(request, reply) {
+        try {
+            const result = await sportsComplexService.updateClient(request);
+            return reply.send(result);
+        } catch (error) {
+            logger.error("[updateClient]", error);
+            return reply.code(500).send({ error: "Не вдалося оновити клієнта." });
+        }
+    }
+
+    async getClientById(request, reply) {
+        console.log("getClientById викликано з параметрами:", request.params);
+        console.log("URL:", request.url);
+        console.log("Method:", request.method);
+
+        try {
+            const id = parseInt(request.params.id);
+            
+            // Валідація ID
+            if (isNaN(id) || id <= 0) {
+                return reply.code(400).send({ 
+                    error: "Неправильний ID клієнта" 
+                });
+            }
+            
+            const data = await sportsComplexService.getClientById(id);
+            
+            if (!data) {
+                return reply.code(404).send({ 
+                    error: "Клієнта не знайдено" 
+                });
+            }
+            
+            return reply.send(data);
+        } catch (error) {
+            logger.error("[getClientById]", error);
+            return reply.code(500).send({ 
+                error: "Не вдалося отримати клієнта." 
+            });
+        }
+    }
+
+    async deleteClient(request, reply) {
+        try {
+            const result = await sportsComplexService.deleteClient(request);
+            return reply.send(result);
+        } catch (error) {
+            logger.error("[deleteClient]", error);
+            return reply.code(500).send({ error: "Не вдалося видалити клієнта." });
+        }
+    }
+
+    async renewSubscription(request, reply) {
+        try {
+            const result = await sportsComplexService.renewSubscription(request);
+            return result;
+        } catch (error) {
+            logger.error("[renewSubscription]", error);
+            reply.status(error.statusCode || 500);
+            return { 
+                success: false, 
+                message: error.message || 'Внутрішня помилка сервера' 
+            };
+        }
+    }
+
+    async startLesson(request, reply) {
+        try {
+            const result = await sportsComplexService.startLesson(request);
+            return reply.send(result);
+        } catch (error) {
+            logger.error("[startLesson]", error);
+            return reply.code(500).send({ error: "Не вдалося розпочати заняття." });
+        }
+    }
+
+    async searchClientByMembership(request, reply) {
+        try {
+            const data = await sportsComplexService.searchClientByMembership(request);
+            return reply.send(data);
+        } catch (error) {
+            logger.error("[searchClientByMembership]", error);
+            return reply.code(500).send({ error: "Не вдалося знайти клієнта." });
+        }
+    }
+    
+    async getBillsReport(request, reply) {
+        try {
+            const result = await sportsComplexService.getBillsReport(request);
+            reply.send(result);
+        } catch (error) {
+            logger.error("[getBillsReport]", error);
+            reply.code(500).send({ error: "Не вдалося отримати дані для звіту." });
+        }
+    }
+
+    async exportBillsToWord(request, reply) {
+        try {
+            const result = await sportsComplexService.exportBillsToWord(request);
+            
+            reply
+                .header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                .header('Content-Disposition', 'attachment; filename="bills-report.docx"')
+                .send(result);
+        } catch (error) {
+            logger.error("[exportBillsToWord]", error);
+            reply.code(500).send({ error: "Помилка генерації звіту." });
         }
     }
 }

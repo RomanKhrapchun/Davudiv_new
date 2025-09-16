@@ -56,14 +56,14 @@ const Bills = () => {
         isOpen: false,
         loading: false,
         formData: {
-            account_number: '',
-            payer: '',
+            membership_number: '',
+            client_name: '',
             service_group_id: '',
             service_id: '',
-            quantity: 1,
+            visit_count: 1,
             // Автоматично заповнювані поля
             service_name: '',
-            unit: '',
+            lesson_count: '',
             price: 0,
             total_price: 0,
         },
@@ -154,7 +154,7 @@ const Bills = () => {
                     services: Array.isArray(response.data) ? response.data.map(service => ({
                         value: service.id,
                         label: service.name,
-                        unit: service.unit,
+                        lesson_count: service.lesson_count,
                         price: service.price
                     })) : []
                 }));
@@ -176,12 +176,12 @@ const Bills = () => {
     const columnTable = useMemo(() => [
         {
             title: 'Номер рахунку',
-            dataIndex: 'account_number',
+            dataIndex: 'membership_number',
             width: '10%'
         },
         {
             title: 'Платник',
-            dataIndex: 'payer',
+            dataIndex: 'client_name',
             width: '15%'
         },
         {
@@ -196,12 +196,12 @@ const Bills = () => {
         },
         {
             title: 'Одиниці',
-            dataIndex: 'unit',
+            dataIndex: 'lesson_count',
             width: '8%'
         },
         {
             title: 'Кількість',
-            dataIndex: 'quantity',
+            dataIndex: 'visit_count',
             width: '8%'
         },
         {
@@ -279,7 +279,7 @@ const Bills = () => {
                                             });
                                             notification({
                                                 type: 'success',
-                                                message: `Рахунок №${record.account_number} скасовано`
+                                                message: `Рахунок №${record.membership_number} скасовано`
                                             });
                                             retryFetch('/api/sportscomplex/bills/filter', {
                                                 method: 'post',
@@ -330,12 +330,12 @@ const Bills = () => {
         return data.items.map(el => ({
             key: el.id,
             id: el.id,
-            account_number: el.account_number,
-            payer: el.payer,
+            membership_number: el.membership_number,
+            client_name: el.client_name,
             service_group: el.service_group,
             service_name: el.service_name,
-            unit: el.unit,
-            quantity: el.quantity,
+            lesson_count: el.lesson_count,
+            visit_count: el.visit_count,
             total_price: el.total_price,
             status: el.status
         }));
@@ -370,7 +370,7 @@ const Bills = () => {
             };
             
             // Якщо змінюється кількість, оновити загальну вартість
-            if (name === 'quantity' && updatedFormData.price) {
+            if (name === 'visit_count' && updatedFormData.price) {
                 updatedFormData.total_price = updatedFormData.price * value;
             }
             
@@ -393,7 +393,7 @@ const Bills = () => {
                 service_group_id: option, // Зберігаємо повний об'єкт опції
                 service_id: '', // Скидаємо вибрану послугу
                 service_name: '',
-                unit: '',
+                lesson_count: '',
                 price: 0,
                 total_price: 0
             }
@@ -417,8 +417,8 @@ const Bills = () => {
         );
         
         if (serviceOption) {
-            const { label, unit, price } = serviceOption;
-            const quantity = parseInt(createModalState.formData.quantity) || 1;
+            const { label, lesson_count, price } = serviceOption;
+            const visit_count = parseInt(createModalState.formData.visit_count) || 1;
 
             setCreateModalState(prev => ({
                 ...prev,
@@ -426,18 +426,18 @@ const Bills = () => {
                     ...prev.formData,
                     service_id: option, // Зберігаємо повний об'єкт опції
                     service_name: label,
-                    unit,
+                    lesson_count,
                     price,
-                    total_price: price * quantity
+                    total_price: price * visit_count
                 }
             }));
             
             /*console.log("Оновлений стан:", {
                 service_id: option,
                 service_name: label,
-                unit,
+                lesson_count,
                 price,
-                total_price: price * quantity
+                total_price: price * visit_count
             }); // Для відлагодження */
         }
     };
@@ -604,13 +604,13 @@ const Bills = () => {
             ...prev,
             isOpen: true,
             formData: {
-                account_number: accountNumber,
-                payer: '',
+                membership_number: accountNumber,
+                client_name: '',
                 service_group_id: '',
                 service_id: '',
-                quantity: 1,
+                visit_count: 1,
                 service_name: '',
-                unit: '',
+                lesson_count: '',
                 price: 0,
                 total_price: 0
             }
@@ -628,10 +628,10 @@ const Bills = () => {
     
     // Функція для обробки відправки форми створення рахунку
     const handleCreateFormSubmit = async () => {
-        const { account_number, payer, service_id, quantity } = createModalState.formData;
+        const { membership_number, client_name, service_id, visit_count } = createModalState.formData;
         
         // Валідація форми
-        if (!account_number || !payer || !service_id || !quantity) {
+        if (!membership_number || !client_name || !service_id || !visit_count) {
             notification({
                 type: 'warning',
                 placement: 'top',
@@ -651,10 +651,10 @@ const Bills = () => {
             await fetchFunction('/api/sportscomplex/bills', {
                 method: 'post',
                 data: {
-                    account_number,
-                    payer,
+                    membership_number,
+                    client_name,
                     service_id: serviceIdValue, // Використовуємо числове значення ID
-                    quantity: parseInt(quantity),
+                    visit_count: parseInt(visit_count),
                     status: 'В процесі'
                 }
             });
@@ -770,18 +770,18 @@ const Bills = () => {
                             <div className="table-filter__item">
                                 <Input 
                                     icon={searchIcon} 
-                                    name="account_number" 
+                                    name="membership_number" 
                                     placeholder="Номер рахунку" 
-                                    value={state.selectData?.account_number || ''} 
+                                    value={state.selectData?.membership_number || ''} 
                                     onChange={onHandleChange} 
                                 />
                             </div>
                             <div className="table-filter__item">
                                 <Input 
                                     icon={searchIcon} 
-                                    name="payer" 
+                                    name="client_name" 
                                     placeholder="Платник" 
-                                    value={state.selectData?.payer || ''} 
+                                    value={state.selectData?.client_name || ''} 
                                     onChange={onHandleChange} 
                                 />
                             </div>
@@ -830,8 +830,8 @@ const Bills = () => {
                                 tooltip="Номер рахунку генерується автоматично"
                             >
                                 <Input
-                                    name="account_number"
-                                    value={createModalState.formData.account_number}
+                                    name="membership_number"
+                                    value={createModalState.formData.membership_number}
                                     onChange={onCreateFormChange}
                                     placeholder="Введіть номер рахунку"
                                     disabled={true} // Номер рахунку генерується автоматично
@@ -844,8 +844,8 @@ const Bills = () => {
                                 fullWidth
                             >
                                 <Input
-                                    name="payer"
-                                    value={createModalState.formData.payer}
+                                    name="client_name"
+                                    value={createModalState.formData.client_name}
                                     onChange={onCreateFormChange}
                                     placeholder="Введіть ПІБ платника"
                                 />
@@ -887,8 +887,8 @@ const Bills = () => {
                                     fullWidth
                                 >
                                     <Input
-                                        name="unit"
-                                        value={createModalState.formData.unit}
+                                        name="lesson_count"
+                                        value={createModalState.formData.lesson_count}
                                         disabled={true} // Заповнюється автоматично при виборі послуги
                                     />
                                 </FormItem>
@@ -899,10 +899,10 @@ const Bills = () => {
                                     fullWidth
                                 >
                                     <Input
-                                        name="quantity"
+                                        name="visit_count"
                                         type="number"
                                         min="1"
-                                        value={createModalState.formData.quantity}
+                                        value={createModalState.formData.visit_count}
                                         onChange={onCreateFormChange}
                                         placeholder="Кількість"
                                     />
@@ -950,7 +950,7 @@ const Bills = () => {
                         title="Зміна статусу рахунку"
                     >
                         <p className="paragraph">
-                            Ви впевнені, що бажаєте змінити статус рахунку №{changeStateModalState.bill?.account_number} 
+                            Ви впевнені, що бажаєте змінити статус рахунку №{changeStateModalState.bill?.membership_number} 
                             з "{changeStateModalState.bill?.status}" на "{changeStateModalState.newState}"?
                         </p>
                     </Modal>

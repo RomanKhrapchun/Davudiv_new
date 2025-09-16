@@ -78,6 +78,7 @@ const SportsServiceView = lazy(() => import('./pages/SportsСomplex/ServiceView.
 const SportsServiceEdit = lazy(() => import('./pages/SportsСomplex/ServiceEdit.jsx'));
 const SportsBillDetails = lazy(() => import('./pages/SportsСomplex/BillDetails.jsx'));
 const PrintSportsBillCard = lazy(() => import('./components/Cards/PrintBillCard.jsx'));
+const SportsClients = lazy(() => import('./pages/SportsСomplex/Clients.jsx'));
 // Open data
 const OpenDataList = lazy(() => import('./pages/OpenData/OpenDataList.jsx'));
 const OpenDataUniversal = lazy(() => import('./pages/OpenData/OpenDataUniversal'));
@@ -167,6 +168,7 @@ function App() {
                     <Route path="sportscomplex/service/:serviceId/edit" element={<Suspense fallback={<Loader/>}><SportsServiceEdit /></Suspense>} />
                     <Route path="sportscomplex/bills/:id/requisites" element={<Suspense fallback={<Loader />}><SportsBillDetails /></Suspense>} />
                     <Route path="sportscomplex/bills/:id/print" element={<Suspense fallback={<Loader />}><PrintSportsBillCard /></Suspense>} />
+                    <Route exact path="sportscomplex/clients" element={<Suspense fallback={<Loader />}><SportsClients /></Suspense>} />
                     {/* Open data */}
                     <Route exact path="opendata" element={<Suspense fallback={<Loader />}><OpenDataList /></Suspense>} />
                     <Route path="opendata/:tableId/:action/:id" element={<Suspense fallback={<Loader />}><OpenDataUniversal /></Suspense>} />

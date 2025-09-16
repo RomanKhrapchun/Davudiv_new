@@ -1,20 +1,53 @@
-// файл: back/modules/sportcomplex/service/sportscomplex-service.js
-
 const sportsComplexRepository = require("../repository/sportscomplex-repository");
 const logRepository = require("../../log/repository/log-repository");
 const logger = require("../../../utils/logger");
 const { paginate, paginationData } = require("../../../utils/function");
-const { allowedRequisitesFilterFields, allowedServicesFilterFields, allowedBillsFilterFields, displayRequisitesFilterFields, displayServicesFilterFields, displayBillsFilterFields} = require("../../../utils/constants");
+const { 
+    allowedRequisitesFilterFields, 
+    allowedServicesFilterFields, 
+    allowedBillsFilterFields, 
+    allowedClientsFilterFields, 
+    displayRequisitesFilterFields, 
+    displayServicesFilterFields, 
+    displayBillsFilterFields, 
+    displayClientsFilterFields,
+    allowedSortFieldsBills,
+    allowedSortFieldsClients,
+    allowedSortFieldsServices,
+    allowedSortFieldsRequisites
+} = require("../../../utils/constants");
 const { createRequisiteWord } = require("../../../utils/generateDocx");
-const { buildWhereCondition } = require("../../../utils/function");
 
 class SportsComplexService {
     async findRequisitesByFilter(request) {
-        const { page = 1, limit = 16, ...whereConditions } = request.body;
+        const { 
+            page = 1, 
+            limit = 16, 
+            sort_by = null, 
+            sort_direction = 'asc',
+            ...whereConditions 
+        } = request.body;
+        
         const { offset } = paginate(page, limit);
         const allowedFields = allowedRequisitesFilterFields.filter(el => whereConditions.hasOwnProperty(el)).reduce((acc, key) => ({ ...acc, [key]: whereConditions[key] }), {});
 
-        const data = await sportsComplexRepository.findRequisitesByFilter(limit, offset, displayRequisitesFilterFields, allowedFields);
+        // Валідація сортування
+        const isValidSortField = sort_by && allowedSortFieldsRequisites.includes(sort_by);
+        const isValidSortDirection = ['asc', 'desc'].includes(sort_direction?.toLowerCase());
+        
+        const validSortBy = isValidSortField ? sort_by : null;
+        const validSortDirection = isValidSortDirection ? sort_direction.toLowerCase() : 'asc';
+
+        console.log('🔄 Requisites sorting params:', { sort_by, sort_direction, validSortBy, validSortDirection });
+
+        const data = await sportsComplexRepository.findRequisitesByFilter(
+            limit, 
+            offset, 
+            displayRequisitesFilterFields, 
+            allowedFields,
+            validSortBy,
+            validSortDirection
+        );
 
         if (Object.keys(whereConditions).length > 0) {
             await logRepository.createLog({
@@ -26,21 +59,50 @@ class SportsComplexService {
                 action_stamp_tx: new Date(),
                 action_stamp_stm: new Date(),
                 action_stamp_clk: new Date(),
-                schema_name: 'public',
+                schema_name: 'sport',
                 table_name: 'requisites',
                 oid: '16504',
             });
         }
 
-        return paginationData(data[0], page, limit, data[1]);
+        const paginatedData = paginationData(data[0], page, limit, data[1]);
+        
+        return {
+            ...paginatedData,
+            sort_by: validSortBy,
+            sort_direction: validSortDirection
+        };
     }
     
     async findPoolServicesByFilter(request) {
-        const { page = 1, limit = 16, ...whereConditions } = request.body;
+        const { 
+            page = 1, 
+            limit = 16, 
+            sort_by = null, 
+            sort_direction = 'asc',
+            ...whereConditions 
+        } = request.body;
+        
         const { offset } = paginate(page, limit);
         const allowedFields = allowedServicesFilterFields.filter(el => whereConditions.hasOwnProperty(el)).reduce((acc, key) => ({ ...acc, [key]: whereConditions[key] }), {});
 
-        const data = await sportsComplexRepository.findPoolServicesByFilter(limit, offset, displayServicesFilterFields, allowedFields);
+        // Валідація сортування
+        const isValidSortField = sort_by && allowedSortFieldsServices.includes(sort_by);
+        const isValidSortDirection = ['asc', 'desc'].includes(sort_direction?.toLowerCase());
+        
+        const validSortBy = isValidSortField ? sort_by : null;
+        const validSortDirection = isValidSortDirection ? sort_direction.toLowerCase() : 'asc';
+
+        console.log('🔄 Services sorting params:', { sort_by, sort_direction, validSortBy, validSortDirection });
+
+        const data = await sportsComplexRepository.findPoolServicesByFilter(
+            limit, 
+            offset, 
+            displayServicesFilterFields, 
+            allowedFields,
+            validSortBy,
+            validSortDirection
+        );
 
         if (Object.keys(whereConditions).length > 0) {
             await logRepository.createLog({
@@ -52,13 +114,19 @@ class SportsComplexService {
                 action_stamp_tx: new Date(),
                 action_stamp_stm: new Date(),
                 action_stamp_clk: new Date(),
-                schema_name: 'public',
+                schema_name: 'sport',
                 table_name: 'services',
                 oid: '16505',
             });
         }
 
-        return paginationData(data[0], page, limit, data[1]);
+        const paginatedData = paginationData(data[0], page, limit, data[1]);
+        
+        return {
+            ...paginatedData,
+            sort_by: validSortBy,
+            sort_direction: validSortDirection
+        };
     }
 
     async getById(id) {
@@ -74,7 +142,6 @@ class SportsComplexService {
         try {
             const data = await sportsComplexRepository.getRequisite(id);
             
-            // Логування операції
             await logRepository.createLog({
                 row_pk_id: id,
                 uid: request?.user?.id,
@@ -84,7 +151,7 @@ class SportsComplexService {
                 action_stamp_tx: new Date(),
                 action_stamp_stm: new Date(),
                 action_stamp_clk: new Date(),
-                schema_name: 'public',
+                schema_name: 'sport',
                 table_name: 'requisites',
                 oid: '16504',
             });
@@ -105,19 +172,17 @@ class SportsComplexService {
         }
     }
 
-    // Нові методи для функціоналу рахунків
-
+    // Методи для послуг
     async createPoolService(request) {
         try {
-            const { name, unit, price, service_group_id } = request.body;
+            const { name, lesson_count, price, service_group_id } = request.body;
             const result = await sportsComplexRepository.createPoolService({
                 name,
-                unit,
+                lesson_count,
                 price,
                 service_group_id
             });
             
-            // Логування операції
             await logRepository.createLog({
                 row_pk_id: result.id,
                 uid: request?.user?.id,
@@ -127,7 +192,7 @@ class SportsComplexService {
                 action_stamp_tx: new Date(),
                 action_stamp_stm: new Date(),
                 action_stamp_clk: new Date(),
-                schema_name: 'public',
+                schema_name: 'sport',
                 table_name: 'services',
                 oid: '16505',
             });
@@ -149,7 +214,6 @@ class SportsComplexService {
                 service_group_id
             });
             
-            // Логування операції
             await logRepository.createLog({
                 row_pk_id: result.id,
                 uid: request?.user?.id,
@@ -159,7 +223,7 @@ class SportsComplexService {
                 action_stamp_tx: new Date(),
                 action_stamp_stm: new Date(),
                 action_stamp_clk: new Date(),
-                schema_name: 'public',
+                schema_name: 'sport',
                 table_name: 'requisites',
                 oid: '16504',
             });
@@ -182,72 +246,141 @@ class SportsComplexService {
 
     async getServicesByGroup(id) {
         try {
-            // Додамо логування для діагностики
-            //console.log(`Getting services for group ID: ${id}`);
-            const result = await sportsComplexRepository.getServicesByGroup(id);
-            //console.log(`Found ${result.length} services for group ID: ${id}`);
-            return result;
+            return await sportsComplexRepository.getServicesByGroup(id);
         } catch (error) {
             logger.error("[SportsComplexService][getServicesByGroup]", error);
             throw error;
         }
     }
 
-async createBill(request) {
-    try {
-        const { account_number, payer, service_id, quantity, status } = request.body;
-        //console.log("createBill: Отримані дані:", request.body);
-        
-        // Перевірка, чи service_id є числовим
-        const serviceIdNumber = parseInt(service_id);
-        if (isNaN(serviceIdNumber)) {
-            throw new Error('Неправильний формат ID послуги');
+    // Нові методи для клієнтів та рахунків
+    async searchClients(request) {
+        try {
+            const { name } = request.body;
+            return await sportsComplexRepository.searchClientsByName(name);
+        } catch (error) {
+            logger.error("[SportsComplexService][searchClients]", error);
+            throw error;
         }
-        
-        const result = await sportsComplexRepository.createBill({
-            account_number,
-            payer,
-            service_id: serviceIdNumber, // Гарантуємо, що це число
-            quantity: parseInt(quantity),
-            status
-        });
-        
-        // Логування операції
-        await logRepository.createLog({
-            row_pk_id: result.id,
-            uid: request?.user?.id,
-            action: 'INSERT',
-            client_addr: request?.ip,
-            application_name: 'Створення рахунку',
-            action_stamp_tx: new Date(),
-            action_stamp_stm: new Date(),
-            action_stamp_clk: new Date(),
-            schema_name: 'public',
-            table_name: 'payments',
-            oid: '16506',
-        });
-        
-        return { 
-            success: true, 
-            message: 'Рахунок успішно створено',
-            id: result.id
-        };
-    } catch (error) {
-        logger.error("[SportsComplexService][createBill]", error);
-        throw error;
     }
-}
+
+    async createBill(request) {
+        try {
+            const { membership_number, client_name, phone_number, service_id, discount_type } = request.body;
+            
+            const result = await sportsComplexRepository.createBillWithDiscount({
+                membership_number,
+                client_name,
+                phone_number,
+                service_id,
+                discount_type
+            });
+            
+            await logRepository.createLog({
+                row_pk_id: result.id,
+                uid: request?.user?.id,
+                action: 'INSERT',
+                client_addr: request?.ip,
+                application_name: 'Створення рахунку з пільгою',
+                action_stamp_tx: new Date(),
+                action_stamp_stm: new Date(),
+                action_stamp_clk: new Date(),
+                schema_name: 'sport',
+                table_name: 'payments',
+                oid: '16506',
+            });
+            
+            return { 
+                success: true, 
+                message: 'Рахунок успішно створено',
+                id: result.id
+            };
+        } catch (error) {
+            logger.error("[SportsComplexService][createBill]", error);
+            throw error;
+        }
+    }
+
+    async updateBill(request) {
+        try {
+            const { id } = request.params;
+            const { membership_number, client_name, phone_number, service_id, discount_type } = request.body;
+            
+            const result = await sportsComplexRepository.updateBillWithDiscount(id, {
+                membership_number,
+                client_name,
+                phone_number,
+                service_id,
+                discount_type
+            });
+            
+            if (!result) {
+                throw new Error('Рахунок не знайдено');
+            }
+            
+            await logRepository.createLog({
+                row_pk_id: id,
+                uid: request?.user?.id,
+                action: 'UPDATE',
+                client_addr: request?.ip,
+                application_name: 'Оновлення рахунку з пільгою',
+                action_stamp_tx: new Date(),
+                action_stamp_stm: new Date(),
+                action_stamp_clk: new Date(),
+                schema_name: 'sport',
+                table_name: 'payments',
+                oid: '16506',
+            });
+            
+            return { success: true, message: 'Рахунок успішно оновлено' };
+        } catch (error) {
+            logger.error("[SportsComplexService][updateBill]", error);
+            throw error;
+        }
+    }
 
     async findBillsByFilter(request) {
         try {
-            const { page = 1, limit = 16, ...whereConditions} = request.body;
-            const { offset } = paginate(page, limit);
+            console.log('🔍 === ПОЧАТОК ДЕБАГУ СЕРВІСУ BILLS ===');
+            console.log('🔍 request.body:', JSON.stringify(request.body, null, 2));
             
+            const { 
+                page = 1, 
+                limit = 16, 
+                sort_by = null, 
+                sort_direction = 'asc',
+                ...whereConditions
+            } = request.body;
+            
+            console.log('🔍 whereConditions:', JSON.stringify(whereConditions, null, 2));
+            console.log('🔍 allowedBillsFilterFields:', allowedBillsFilterFields);
+            
+            const { offset } = paginate(page, limit);
             const allowedFields = allowedBillsFilterFields.filter(el => whereConditions.hasOwnProperty(el)).reduce((acc, key) => ({ ...acc, [key]: whereConditions[key] }), {});
 
-            const data = await sportsComplexRepository.findBillsByFilter(limit, offset, displayBillsFilterFields, allowedFields);
+            console.log('🔍 allowedFields після фільтрації:', JSON.stringify(allowedFields, null, 2));
+            console.log('🔍 allowedFields ключі:', Object.keys(allowedFields));
+
+            // Валідація сортування
+            const isValidSortField = sort_by && allowedSortFieldsBills.includes(sort_by);
+            const isValidSortDirection = ['asc', 'desc'].includes(sort_direction?.toLowerCase());
             
-            // Логування операції пошуку, якщо є фільтри
+            const validSortBy = isValidSortField ? sort_by : null;
+            const validSortDirection = isValidSortDirection ? sort_direction.toLowerCase() : 'asc';
+
+            console.log('🔄 Bills sorting params:', { sort_by, sort_direction, validSortBy, validSortDirection });
+            console.log('🔍 === ПЕРЕДАЄМО В РЕПОЗИТОРІЙ ===');
+
+            const data = await sportsComplexRepository.findBillsByFilterWithDiscount(
+                limit, 
+                offset, 
+                displayBillsFilterFields, 
+                allowedFields,
+                {}, // dateFilter
+                validSortBy,
+                validSortDirection
+            );
+            
             if (Object.keys(whereConditions).length > 0) {
                 await logRepository.createLog({
                     row_pk_id: null,
@@ -258,108 +391,71 @@ async createBill(request) {
                     action_stamp_tx: new Date(),
                     action_stamp_stm: new Date(),
                     action_stamp_clk: new Date(),
-                    schema_name: 'public',
+                    schema_name: 'sport',
                     table_name: 'payments',
                     oid: '16506',
                 });
             }
             
-            return paginationData(data[0], page, limit, data[1]);
+            const paginatedData = paginationData(data[0], page, limit, data[1]);
+            
+            console.log('🔍 === РЕЗУЛЬТАТ СЕРВІСУ ===');
+            console.log('🔍 paginatedData.items length:', paginatedData?.items?.length || 0);
+            console.log('🔍 === КІНЕЦЬ ДЕБАГУ СЕРВІСУ ===');
+            
+            return {
+                ...paginatedData,
+                sort_by: validSortBy,
+                sort_direction: validSortDirection
+            };
         } catch (error) {
             logger.error("[SportsComplexService][findBillsByFilter]", error);
+            console.error('❌ Service Error:', error.message);
             throw error;
         }
     }
 
     async getBillById(id) {
         try {
-            return await sportsComplexRepository.getBillById(id);
+            return await sportsComplexRepository.getBillByIdWithDiscount(id);
         } catch (error) {
             logger.error("[SportsComplexService][getBillById]", error);
             throw error;
         }
     }
 
-    async updateBillStatus(request) {
-        try {
-            const { id } = request.params;
-            const { status } = request.body;
-            
-            const result = await sportsComplexRepository.updateBillStatus(id, status);
-            
-            if (!result) {
-                throw new Error('Рахунок не знайдено');
-            }
-            
-            // Логування операції
-            await logRepository.createLog({
-                row_pk_id: id,
-                uid: request?.user?.id,
-                action: 'UPDATE',
-                client_addr: request?.ip,
-                application_name: 'Зміна статусу рахунку',
-                action_stamp_tx: new Date(),
-                action_stamp_stm: new Date(),
-                action_stamp_clk: new Date(),
-                schema_name: 'public',
-                table_name: 'payments',
-                oid: '16506',
-            });
-            
-            return { success: true, message: `Статус рахунку успішно змінено на "${status}"` };
-        } catch (error) {
-            logger.error("[SportsComplexService][updateBillStatus]", error);
-            throw error;
-        }
-    }
-
-    async generateBillReceipt(request, reply) {
+    async downloadBill(request) {
         try {
             const { id } = request.params;
             
             // Отримуємо дані рахунку
-            const bill = await sportsComplexRepository.getBillById(id);
+            const bill = await sportsComplexRepository.getBillByIdWithDiscount(id);
             
             if (!bill) {
                 throw new Error('Рахунок не знайдено');
             }
             
-            // Перевіряємо статус рахунку
-            if (bill.status !== 'Оплачено') {
-                throw new Error('Неможливо згенерувати квитанцію для неоплаченого рахунку');
-            }
+            // Тут буде логіка генерації PDF файлу
+            // Поки що повертаємо заглушку
+            const pdfBuffer = Buffer.from('PDF заглушка');
             
-            // Генеруємо PDF квитанцію
-            const pdfBuffer = await createPDF({
-                title: 'Квитанція про оплату',
-                accountNumber: bill.account_number,
-                payer: bill.payer,
-                serviceGroup: bill.service_group,
-                serviceName: bill.service_name,
-                unit: bill.unit,
-                quantity: bill.quantity,
-                totalPrice: bill.total_price,
-                date: new Date(bill.updated_at).toLocaleDateString('uk-UA')
-            });
-            
-            // Логування операції
             await logRepository.createLog({
                 row_pk_id: id,
                 uid: request?.user?.id,
                 action: 'GENERATE_DOC',
                 client_addr: request?.ip,
-                application_name: 'Генерування квитанції',
+                application_name: 'Завантаження рахунку',
                 action_stamp_tx: new Date(),
                 action_stamp_stm: new Date(),
                 action_stamp_clk: new Date(),
-                schema_name: 'public',
+                schema_name: 'sport',
                 table_name: 'payments',
                 oid: '16506',
             });
             
             return pdfBuffer;
         } catch (error) {
-            logger.error("[SportsComplexService][generateBillReceipt]", error);
+            logger.error("[SportsComplexService][downloadBill]", error);
             throw error;
         }
     }
@@ -369,7 +465,6 @@ async createBill(request) {
             const { name } = request.body;
             const result = await sportsComplexRepository.createServiceGroup({ name });
             
-            // Логування операції
             await logRepository.createLog({
                 row_pk_id: result.id,
                 uid: request?.user?.id,
@@ -379,7 +474,7 @@ async createBill(request) {
                 action_stamp_tx: new Date(),
                 action_stamp_stm: new Date(),
                 action_stamp_clk: new Date(),
-                schema_name: 'public',
+                schema_name: 'sport',
                 table_name: 'service_groups',
                 oid: '16503',
             });
@@ -407,7 +502,6 @@ async createBill(request) {
                 throw new Error('Реквізити не знайдено');
             }
             
-            // Логування операції
             await logRepository.createLog({
                 row_pk_id: id,
                 uid: request?.user?.id,
@@ -417,7 +511,7 @@ async createBill(request) {
                 action_stamp_tx: new Date(),
                 action_stamp_stm: new Date(),
                 action_stamp_clk: new Date(),
-                schema_name: 'public',
+                schema_name: 'sport',
                 table_name: 'requisites',
                 oid: '16504',
             });
@@ -441,16 +535,15 @@ async createBill(request) {
     async updateService(request) {
         try {
             const { id } = request.params;
-            const { name, unit, price, service_group_id } = request.body;
+            const { name, lesson_count, price, service_group_id } = request.body;
             
             const result = await sportsComplexRepository.updateService(id, {
                 name,
-                unit,
+                lesson_count,
                 price,
                 service_group_id
             });
             
-            // Логування операції
             await logRepository.createLog({
                 row_pk_id: id,
                 uid: request?.user?.id,
@@ -460,7 +553,7 @@ async createBill(request) {
                 action_stamp_tx: new Date(),
                 action_stamp_stm: new Date(),
                 action_stamp_clk: new Date(),
-                schema_name: 'public',
+                schema_name: 'sport',
                 table_name: 'services',
                 oid: '16505',
             });
@@ -468,6 +561,415 @@ async createBill(request) {
             return { success: true, message: 'Послугу успішно оновлено' };
         } catch (error) {
             logger.error("[SportsComplexService][updateService]", error);
+            throw error;
+        }
+    }
+
+    async findClientsByFilter(request) {
+        try {
+            const { 
+                page = 1, 
+                limit = 16, 
+                sort_by = null, 
+                sort_direction = 'asc',
+                ...whereConditions
+            } = request.body;
+            
+            const { offset } = paginate(page, limit);
+            const allowedFields = allowedClientsFilterFields.filter(el => whereConditions.hasOwnProperty(el)).reduce((acc, key) => ({ ...acc, [key]: whereConditions[key] }), {});
+
+            // Валідація сортування
+            const isValidSortField = sort_by && allowedSortFieldsClients.includes(sort_by);
+            const isValidSortDirection = ['asc', 'desc'].includes(sort_direction?.toLowerCase());
+            
+            const validSortBy = isValidSortField ? sort_by : null;
+            const validSortDirection = isValidSortDirection ? sort_direction.toLowerCase() : 'asc';
+
+            console.log('🔄 Clients sorting params:', { sort_by, sort_direction, validSortBy, validSortDirection });
+
+            const data = await sportsComplexRepository.findClientsByFilter(
+                limit, 
+                offset, 
+                displayClientsFilterFields, 
+                allowedFields,
+                validSortBy,
+                validSortDirection
+            );
+            
+            if (Object.keys(whereConditions).length > 0) {
+                await logRepository.createLog({
+                    row_pk_id: null,
+                    uid: request?.user?.id,
+                    action: 'SEARCH',
+                    client_addr: request?.ip,
+                    application_name: 'Пошук клієнтів',
+                    action_stamp_tx: new Date(),
+                    action_stamp_stm: new Date(),
+                    action_stamp_clk: new Date(),
+                    schema_name: 'sport',
+                    table_name: 'clients',
+                    oid: '16507',
+                });
+            }
+            
+            const paginatedData = paginationData(data[0], page, limit, data[1]);
+            
+            return {
+                ...paginatedData,
+                sort_by: validSortBy,
+                sort_direction: validSortDirection
+            };
+        } catch (error) {
+            logger.error("[SportsComplexService][findClientsByFilter]", error);
+            throw error;
+        }
+    }
+
+    validateUkrainianPhone(phone) {
+        const cleanPhone = phone.replace(/\s/g, '');
+        const phoneRegex = /^\+380(50|63|66|67|68|91|92|93|94|95|96|97|98|99)\d{7}$/;
+        return phoneRegex.test(cleanPhone);
+    }
+
+    normalizeUkrainianPhone(phone) {
+        let cleanPhone = phone.replace(/\s/g, '');
+        
+        if (cleanPhone.startsWith('380') && !cleanPhone.startsWith('+380')) {
+            cleanPhone = '+' + cleanPhone;
+        }
+        
+        if (cleanPhone.startsWith('+380') && cleanPhone.length === 13) {
+            return cleanPhone.replace(/(\+38)(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4 $5');
+        }
+        
+        return phone;
+    }
+
+    async createClient(request) {
+        try {
+            const { name, phone_number, membership_number } = request.body;
+            
+            // Валідація ПІБ
+            if (!name || name.trim().length < 2) {
+                throw new Error('ПІБ клієнта обов\'язкове і має містити мінімум 2 символи');
+            }
+            
+            // Валідація номера телефону
+            if (!phone_number || !this.validateUkrainianPhone(phone_number)) {
+                throw new Error('Номер телефону має бути у форматі +38 0XX XXX XX XX (український номер)');
+            }
+            
+            // Нормалізуємо номер телефону
+            const normalizedPhone = this.normalizeUkrainianPhone(phone_number);
+            
+            // Генерація/перевірка номера абонемента
+            let finalMembershipNumber = membership_number;
+            
+            if (!finalMembershipNumber || finalMembershipNumber.trim() === '') {
+                // Генеруємо новий унікальний номер
+                finalMembershipNumber = await sportsComplexRepository.generateUniqueClientNumber();
+            } else {
+                // Перевіряємо унікальність введеного номера
+                const membershipToCheck = finalMembershipNumber.trim();
+                const isUnique = await sportsComplexRepository.checkMembershipUnique(membershipToCheck);
+                
+                if (!isUnique) {
+                    throw new Error(`Номер абонемента "${membershipToCheck}" вже існує. Залиште поле порожнім для автоматичної генерації або введіть інший номер.`);
+                }
+                
+                finalMembershipNumber = membershipToCheck;
+            }
+            
+            const result = await sportsComplexRepository.createClient({
+                name: name.trim(),
+                phone_number: normalizedPhone,
+                membership_number: finalMembershipNumber
+            });
+            
+            await logRepository.createLog({
+                row_pk_id: result.id,
+                uid: request?.user?.id,
+                action: 'INSERT',
+                client_addr: request?.ip,
+                application_name: 'Створення клієнта',
+                action_stamp_tx: new Date(),
+                action_stamp_stm: new Date(),
+                action_stamp_clk: new Date(),
+                schema_name: 'sport',
+                table_name: 'clients',
+                oid: '16507',
+            });
+            
+            return { 
+                success: true, 
+                message: 'Клієнта успішно створено',
+                id: result.id,
+                membership_number: finalMembershipNumber
+            };
+        } catch (error) {
+            logger.error("[SportsComplexService][createClient]", error);
+            throw error;
+        }
+    }
+
+    async updateClient(request) {
+        try {
+            const { id } = request.params;
+            const { name, membership_number, phone_number, subscription_duration, service_name } = request.body;
+            
+            const result = await sportsComplexRepository.updateClient(id, {
+                name,
+                membership_number,
+                phone_number,
+                subscription_duration,
+                service_name
+            });
+            
+            await logRepository.createLog({
+                row_pk_id: id,
+                uid: request?.user?.id,
+                action: 'UPDATE',
+                client_addr: request?.ip,
+                application_name: 'Оновлення клієнта',
+                action_stamp_tx: new Date(),
+                action_stamp_stm: new Date(),
+                action_stamp_clk: new Date(),
+                schema_name: 'sport',
+                table_name: 'clients',
+                oid: '16507',
+            });
+            
+            return { 
+                success: true, 
+                message: 'Клієнта успішно оновлено',
+                id: result.id
+            };
+        } catch (error) {
+            logger.error("[SportsComplexService][updateClient]", error);
+            throw error;
+        }
+    }
+
+    async renewSubscription(request) {
+        try {
+            const { id } = request.params;
+            
+            const client = await sportsComplexRepository.getClientById(id);
+            if (!client) {
+                const error = new Error('Клієнта не знайдено');
+                error.statusCode = 404;
+                throw error;
+            }
+            
+            const success = await sportsComplexRepository.renewClientSubscription(id);
+            
+            if (success) {
+                await logRepository.createLog({
+                    row_pk_id: id,
+                    uid: request?.user?.id,
+                    action: 'UPDATE',
+                    client_addr: request?.ip,
+                    application_name: 'Оновлення абонемента',
+                    action_stamp_tx: new Date(),
+                    action_stamp_stm: new Date(),
+                    action_stamp_clk: new Date(),
+                    schema_name: 'sport',
+                    table_name: 'clients',
+                    oid: '16507',
+                });
+                
+                return { 
+                    success: true, 
+                    message: 'Абонемент успішно оновлено на 30 днів' 
+                };
+            } else {
+                throw new Error('Помилка при оновленні абонемента');
+            }
+        } catch (error) {
+            logger.error("[SportsComplexService][renewSubscription]", error);
+            throw error;
+        }
+    }
+
+    async getClientById(id) {
+        try {
+            return await sportsComplexRepository.getClientById(id);
+        } catch (error) {
+            logger.error("[SportsComplexService][getClientById]", error);
+            throw error;
+        }
+    }
+
+    async deleteClient(request) {
+        try {
+            const { id } = request.params;
+            
+            const result = await sportsComplexRepository.deleteClient(id);
+            
+            if (!result) {
+                throw new Error('Клієнта не знайдено');
+            }
+            
+            await logRepository.createLog({
+                row_pk_id: id,
+                uid: request?.user?.id,
+                action: 'DELETE',
+                client_addr: request?.ip,
+                application_name: 'Видалення клієнта',
+                action_stamp_tx: new Date(),
+                action_stamp_stm: new Date(),
+                action_stamp_clk: new Date(),
+                schema_name: 'sport',
+                table_name: 'clients',
+                oid: '16507',
+            });
+            
+            return { success: true, message: 'Клієнта успішно видалено' };
+        } catch (error) {
+            logger.error("[SportsComplexService][deleteClient]", error);
+            throw error;
+        }
+    }
+
+    async startLesson(request) {
+        try {
+            const { id } = request.params;
+            
+            const result = await sportsComplexRepository.startLesson(id);
+            
+            if (!result.success) {
+                throw new Error(result.message);
+            }
+            
+            await logRepository.createLog({
+                row_pk_id: id,
+                uid: request?.user?.id,
+                action: 'UPDATE',
+                client_addr: request?.ip,
+                application_name: 'Початок заняття',
+                action_stamp_tx: new Date(),
+                action_stamp_stm: new Date(),
+                action_stamp_clk: new Date(),
+                schema_name: 'sport',
+                table_name: 'clients',
+                oid: '16507',
+            });
+            
+            return result;
+        } catch (error) {
+            logger.error("[SportsComplexService][startLesson]", error);
+            throw error;
+        }
+    }
+
+    async searchClientByMembership(request) {
+        try {
+            const { membership_number } = request.body;
+            const client = await sportsComplexRepository.searchClientByMembership(membership_number);
+            return { data: client };
+        } catch (error) {
+            logger.error("[SportsComplexService][searchClientByMembership]", error);
+            throw error;
+        }
+    }
+
+    async getBillsReport(request) {
+        try {
+            const filters = request.body || {};
+            const result = await sportsComplexRepository.findBillsForReport(filters);
+            
+            return {
+                success: true,
+                data: result
+            };
+        } catch (error) {
+            logger.error("[SportsComplexService][getBillsReport]", error);
+            throw error;
+        }
+    }
+
+    async exportBillsToWord(request) {
+        try {
+            const bills = request.body;
+            
+            if (!bills || !Array.isArray(bills) || bills.length === 0) {
+                throw new Error('Немає даних для експорту');
+            }
+            
+            const { Document, Paragraph, Table, TableRow, TableCell, AlignmentType, WidthType, Packer } = require('docx');
+            
+            // Створюємо заголовок таблиці
+            const headerRow = new TableRow({
+                children: [
+                    new TableCell({ children: [new Paragraph({ text: "№", alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: "Номер абонемента", alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: "ПІБ клієнта", alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: "Телефон", alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: "Група послуг", alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: "Послуга", alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: "Кількість відвідувань", alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: "Сума", alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: "Пільга", alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: "Дата створення", alignment: AlignmentType.CENTER })] })
+                ]
+            });
+
+            // Створюємо рядки з даними
+            const dataRows = bills.map((bill, index) => new TableRow({
+                children: [
+                    new TableCell({ children: [new Paragraph({ text: (index + 1).toString(), alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: bill.membership_number || "" })] }),
+                    new TableCell({ children: [new Paragraph({ text: bill.client_name || "" })] }),
+                    new TableCell({ children: [new Paragraph({ text: bill.phone_number || "" })] }),
+                    new TableCell({ children: [new Paragraph({ text: bill.service_group || "" })] }),
+                    new TableCell({ children: [new Paragraph({ text: bill.service_name || "" })] }),
+                    new TableCell({ children: [new Paragraph({ text: (bill.visit_count || 0).toString(), alignment: AlignmentType.CENTER })] }),
+                    new TableCell({ children: [new Paragraph({ text: `${bill.total_price || 0} грн`, alignment: AlignmentType.RIGHT })] }),
+                    new TableCell({ children: [new Paragraph({ text: bill.discount_type || "Без пільги" })] }),
+                    new TableCell({ children: [new Paragraph({ text: new Date(bill.created_at).toLocaleDateString('uk-UA') })] })
+                ]
+            }));
+            
+            const table = new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [headerRow, ...dataRows]
+            });
+            
+            // Підрахунок загальної суми
+            const totalAmount = bills.reduce((sum, bill) => sum + (bill.total_price || 0), 0);
+            
+            const doc = new Document({
+                sections: [{
+                    children: [
+                        new Paragraph({
+                            text: "Звіт по рахунках",
+                            alignment: AlignmentType.CENTER,
+                            spacing: { after: 300 }
+                        }),
+                        new Paragraph({
+                            text: `Дата формування: ${new Date().toLocaleDateString('uk-UA')}`,
+                            alignment: AlignmentType.RIGHT,
+                            spacing: { after: 200 }
+                        }),
+                        new Paragraph({
+                            text: `Загальна кількість рахунків: ${bills.length}`,
+                            alignment: AlignmentType.LEFT,
+                            spacing: { after: 100 }
+                        }),
+                        new Paragraph({
+                            text: `Загальна сума: ${totalAmount} грн`,
+                            alignment: AlignmentType.LEFT,
+                            spacing: { after: 300 }
+                        }),
+                        table
+                    ]
+                }]
+            });
+            
+            return await Packer.toBuffer(doc);
+            
+        } catch (error) {
+            logger.error("[SportsComplexService][exportBillsToWord]", error);
             throw error;
         }
     }
