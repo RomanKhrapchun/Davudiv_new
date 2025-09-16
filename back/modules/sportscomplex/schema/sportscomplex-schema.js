@@ -429,6 +429,11 @@ const getBillsReportSchema = {
         phone_number: {
             type: 'string',
             optional: true,
+        },
+        date: {
+            type: 'string',
+            optional: true,
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$'
         }
     }
 }
@@ -437,22 +442,49 @@ const getBillsReportSchema = {
 const exportBillsToWordSchema = {
     body: {
         type: 'array',
+        minItems: 1,
         items: {
             type: 'object',
             properties: {
-                id: { type: 'number' },
-                membership_number: { type: 'string' },
-                client_name: { type: 'string' },
-                phone_number: { type: 'string' },
-                service_group: { type: 'string' },
-                service_name: { type: 'string' },
-                visit_count: { type: 'number' },
-                total_price: { type: 'number' },
-                original_price: { type: 'number', optional: true },
-                discount_type: { type: 'string', optional: true },
-                discount_applied: { type: 'boolean', optional: true },
-                created_at: { type: 'string' }
-            }
+                id: { 
+                    type: 'number' 
+                },
+                membership_number: { 
+                    type: 'string' 
+                },
+                client_name: { 
+                    type: 'string' 
+                },
+                phone_number: { 
+                    type: 'string' 
+                },
+                service_group: { 
+                    type: 'string' 
+                },
+                service_name: { 
+                    type: 'string' 
+                },
+                visit_count: { 
+                    type: 'number' 
+                },
+                total_price: { 
+                    type: 'number' 
+                },
+                original_price: { 
+                    type: 'number' 
+                },
+                discount_type: { 
+                    type: 'string' 
+                },
+                discount_applied: { 
+                    type: 'boolean' 
+                },
+                created_at: { 
+                    type: 'string' 
+                }
+            },
+            required: ['id', 'membership_number', 'client_name'],
+            additionalProperties: true
         }
     }
 }

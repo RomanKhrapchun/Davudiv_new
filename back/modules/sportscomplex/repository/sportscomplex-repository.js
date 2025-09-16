@@ -1034,27 +1034,44 @@ class SportsComplexRepository {
             const values = [];
             let paramIndex = 1;
             
+            // Фільтр по номеру абонемента
             if (filters.membership_number) {
                 sql += ` AND p.membership_number ILIKE $${paramIndex}`;
                 values.push(`%${filters.membership_number}%`);
                 paramIndex++;
             }
             
+            // Фільтр по імені клієнта
             if (filters.client_name) {
                 sql += ` AND p.client_name ILIKE $${paramIndex}`;
                 values.push(`%${filters.client_name}%`);
                 paramIndex++;
             }
             
+            // Фільтр по номеру телефону
             if (filters.phone_number) {
                 sql += ` AND p.phone_number ILIKE $${paramIndex}`;
                 values.push(`%${filters.phone_number}%`);
                 paramIndex++;
             }
             
+            // ✅ ДОДАНИЙ ФІЛЬТР ПО ДАТІ (це було відсутнє!)
+            if (filters.date) {
+                // Фільтр по даті створення рахунку (тільки дата, без часу)
+                sql += ` AND DATE(p.created_at) = $${paramIndex}`;
+                values.push(filters.date);
+                paramIndex++;
+            }
+            
             sql += ` ORDER BY p.created_at DESC`;
             
-            return await sqlRequest(sql, values);
+            console.log('📊 SQL для звіту:', sql);
+            console.log('📊 Значення фільтрів:', values);
+            
+            const result = await sqlRequest(sql, values);
+            console.log('📊 Кількість знайдених рахунків:', result?.length || 0);
+            
+            return result;
         } catch (error) {
             logger.error("[SportsComplexRepository][findBillsForReport]", error);
             throw error;

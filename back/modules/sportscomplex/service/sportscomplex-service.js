@@ -892,57 +892,233 @@ class SportsComplexService {
         try {
             const bills = request.body;
             
-            if (!bills || !Array.isArray(bills) || bills.length === 0) {
+            if (!Array.isArray(bills) || bills.length === 0) {
                 throw new Error('Немає даних для експорту');
             }
             
-            const { Document, Paragraph, Table, TableRow, TableCell, AlignmentType, WidthType, Packer } = require('docx');
+            const { Document, Paragraph, Table, TableRow, TableCell, AlignmentType, WidthType, Packer, BorderStyle } = require('docx');
             
-            // Створюємо заголовок таблиці
-            const headerRow = new TableRow({
-                children: [
-                    new TableCell({ children: [new Paragraph({ text: "№", alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: "Номер абонемента", alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: "ПІБ клієнта", alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: "Телефон", alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: "Група послуг", alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: "Послуга", alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: "Кількість відвідувань", alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: "Сума", alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: "Пільга", alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: "Дата створення", alignment: AlignmentType.CENTER })] })
-                ]
-            });
+            // Визначаємо тип звіту на основі дат
+            const reportType = this.determineReportType(bills);
+            console.log('📊 Тип звіту:', reportType);
+            
+            // Створюємо заголовки таблиці в залежності від типу звіту
+            let headerRow;
+            if (reportType === 'all_time') {
+                // Для звіту за весь час - показуємо дату
+                headerRow = new TableRow({
+                    children: [
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "№", alignment: AlignmentType.CENTER })],
+                            width: { size: 4, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "Номер абонемента", alignment: AlignmentType.CENTER })],
+                            width: { size: 14, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "ПІБ клієнта", alignment: AlignmentType.CENTER })],
+                            width: { size: 18, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "Послуга", alignment: AlignmentType.CENTER })],
+                            width: { size: 15, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "К-сть відвідувань", alignment: AlignmentType.CENTER })],
+                            width: { size: 8, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "Сума", alignment: AlignmentType.CENTER })],
+                            width: { size: 8, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "Пільга", alignment: AlignmentType.CENTER })],
+                            width: { size: 23, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "Дата створення", alignment: AlignmentType.CENTER })],
+                            width: { size: 10, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        })
+                    ]
+                });
+            } else {
+                // Для звіту за день/дату - без дати, телефону, групи послуг
+                headerRow = new TableRow({
+                    children: [
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "№", alignment: AlignmentType.CENTER })],
+                            width: { size: 5, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "Номер абонемента", alignment: AlignmentType.CENTER })],
+                            width: { size: 16, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "ПІБ клієнта", alignment: AlignmentType.CENTER })],
+                            width: { size: 24, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "Послуга", alignment: AlignmentType.CENTER })],
+                            width: { size: 20, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "К-сть відвідувань", alignment: AlignmentType.CENTER })],
+                            width: { size: 10, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "Сума", alignment: AlignmentType.CENTER })],
+                            width: { size: 9, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        }),
+                        new TableCell({ 
+                            children: [new Paragraph({ text: "Пільга", alignment: AlignmentType.CENTER })],
+                            width: { size: 16, type: WidthType.PERCENTAGE },
+                            margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                        })
+                    ]
+                });
+            }
 
             // Створюємо рядки з даними
-            const dataRows = bills.map((bill, index) => new TableRow({
-                children: [
-                    new TableCell({ children: [new Paragraph({ text: (index + 1).toString(), alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: bill.membership_number || "" })] }),
-                    new TableCell({ children: [new Paragraph({ text: bill.client_name || "" })] }),
-                    new TableCell({ children: [new Paragraph({ text: bill.phone_number || "" })] }),
-                    new TableCell({ children: [new Paragraph({ text: bill.service_group || "" })] }),
-                    new TableCell({ children: [new Paragraph({ text: bill.service_name || "" })] }),
-                    new TableCell({ children: [new Paragraph({ text: (bill.visit_count || 0).toString(), alignment: AlignmentType.CENTER })] }),
-                    new TableCell({ children: [new Paragraph({ text: `${bill.total_price || 0} грн`, alignment: AlignmentType.RIGHT })] }),
-                    new TableCell({ children: [new Paragraph({ text: bill.discount_type || "Без пільги" })] }),
-                    new TableCell({ children: [new Paragraph({ text: new Date(bill.created_at).toLocaleDateString('uk-UA') })] })
-                ]
-            }));
+            const dataRows = bills.map((bill, index) => {
+                if (reportType === 'all_time') {
+                    // Для звіту за весь час - з датою
+                    return new TableRow({
+                        children: [
+                            new TableCell({ 
+                                children: [new Paragraph({ text: (index + 1).toString(), alignment: AlignmentType.CENTER })],
+                                width: { size: 4, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: bill.membership_number || "", alignment: AlignmentType.LEFT })],
+                                width: { size: 14, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: bill.client_name || "", alignment: AlignmentType.LEFT })],
+                                width: { size: 18, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: bill.service_name || "", alignment: AlignmentType.LEFT })],
+                                width: { size: 15, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: (bill.visit_count || 0).toString(), alignment: AlignmentType.CENTER })],
+                                width: { size: 8, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ 
+                                    text: `${Math.round(parseFloat(bill.total_price) || 0)} грн`,
+                                    alignment: AlignmentType.RIGHT 
+                                })],
+                                width: { size: 8, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: this.getDiscountLabel(bill.discount_type), alignment: AlignmentType.LEFT })],
+                                width: { size: 23, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: new Date(bill.created_at).toLocaleDateString('uk-UA'), alignment: AlignmentType.CENTER })],
+                                width: { size: 10, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            })
+                        ]
+                    });
+                } else {
+                    // Для звіту за день/дату - без дати
+                    return new TableRow({
+                        children: [
+                            new TableCell({ 
+                                children: [new Paragraph({ text: (index + 1).toString(), alignment: AlignmentType.CENTER })],
+                                width: { size: 5, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: bill.membership_number || "", alignment: AlignmentType.LEFT })],
+                                width: { size: 16, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: bill.client_name || "", alignment: AlignmentType.LEFT })],
+                                width: { size: 24, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: bill.service_name || "", alignment: AlignmentType.LEFT })],
+                                width: { size: 20, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: (bill.visit_count || 0).toString(), alignment: AlignmentType.CENTER })],
+                                width: { size: 10, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ 
+                                    text: `${Math.round(parseFloat(bill.total_price) || 0)} грн`,
+                                    alignment: AlignmentType.RIGHT 
+                                })],
+                                width: { size: 9, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            }),
+                            new TableCell({ 
+                                children: [new Paragraph({ text: this.getDiscountLabel(bill.discount_type), alignment: AlignmentType.LEFT })],
+                                width: { size: 16, type: WidthType.PERCENTAGE },
+                                margins: { top: 100, bottom: 100, left: 100, right: 100 }
+                            })
+                        ]
+                    });
+                }
+            });
             
             const table = new Table({
                 width: { size: 100, type: WidthType.PERCENTAGE },
+                borders: {
+                    top: { style: BorderStyle.SINGLE, size: 1 },
+                    bottom: { style: BorderStyle.SINGLE, size: 1 },
+                    left: { style: BorderStyle.SINGLE, size: 1 },
+                    right: { style: BorderStyle.SINGLE, size: 1 },
+                    insideHorizontal: { style: BorderStyle.SINGLE, size: 1 },
+                    insideVertical: { style: BorderStyle.SINGLE, size: 1 }
+                },
                 rows: [headerRow, ...dataRows]
             });
             
             // Підрахунок загальної суми
-            const totalAmount = bills.reduce((sum, bill) => sum + (bill.total_price || 0), 0);
+            const totalAmount = bills.reduce((sum, bill) => {
+                const price = parseFloat(bill.total_price) || 0;
+                return sum + price;
+            }, 0);
+            
+            // Заголовок документу
+            const reportDate = this.getReportDate(bills, reportType);
+            const documentTitle = this.getDocumentTitle(reportType, reportDate);
             
             const doc = new Document({
                 sections: [{
                     children: [
                         new Paragraph({
-                            text: "Звіт по рахунках",
+                            text: documentTitle,
                             alignment: AlignmentType.CENTER,
                             spacing: { after: 300 }
                         }),
@@ -957,7 +1133,7 @@ class SportsComplexService {
                             spacing: { after: 100 }
                         }),
                         new Paragraph({
-                            text: `Загальна сума: ${totalAmount} грн`,
+                            text: `Загальна сума: ${Math.round(totalAmount)} грн`,
                             alignment: AlignmentType.LEFT,
                             spacing: { after: 300 }
                         }),
@@ -966,12 +1142,69 @@ class SportsComplexService {
                 }]
             });
             
-            return await Packer.toBuffer(doc);
+            const buffer = await Packer.toBuffer(doc);
+            return buffer;
             
         } catch (error) {
             logger.error("[SportsComplexService][exportBillsToWord]", error);
             throw error;
         }
+    }
+
+    // Допоміжні методи
+    determineReportType(bills) {
+        if (bills.length === 0) return 'all_time';
+        
+        const today = new Date().toISOString().split('T')[0];
+        const firstBillDate = new Date(bills[0].created_at).toISOString().split('T')[0];
+        
+        // Перевіряємо чи всі рахунки за сьогодні
+        const allToday = bills.every(bill => {
+            const billDate = new Date(bill.created_at).toISOString().split('T')[0];
+            return billDate === today;
+        });
+        
+        if (allToday) return 'today';
+        
+        // Перевіряємо чи всі рахунки за одну дату
+        const allSameDate = bills.every(bill => {
+            const billDate = new Date(bill.created_at).toISOString().split('T')[0];
+            return billDate === firstBillDate;
+        });
+        
+        if (allSameDate) return 'specific_date';
+        
+        return 'all_time';
+    }
+
+    getReportDate(bills, reportType) {
+        if (reportType === 'today') {
+            return new Date().toLocaleDateString('uk-UA');
+        } else if (reportType === 'specific_date' && bills.length > 0) {
+            return new Date(bills[0].created_at).toLocaleDateString('uk-UA');
+        }
+        return null;
+    }
+
+    getDocumentTitle(reportType, reportDate) {
+        if (reportType === 'today' || reportType === 'specific_date') {
+            return `Звіт за день (${reportDate})`;
+        }
+        return 'Звіт по платежам за увесь час';
+    }
+
+    getDiscountLabel(discountType) {
+        if (!discountType) return 'Без пільги';
+        
+        const discountLabels = {
+            'orphans_heroes': 'Дітям-сиротам та багатодітним сім\'ям',
+            'refugees_heroes_war': 'Дітям-біженцям та героям війни',
+            'disability_1_2': 'Особам з інвалідністю I-II групи',
+            'war_veterans': 'Учасникам бойових дій',
+            'military_service': 'Військовослужбовці'
+        };
+        
+        return discountLabels[discountType] || discountType;
     }
 }
 

@@ -762,21 +762,35 @@ const Bills = () => {
             }
             // Для 'all' не додаємо фільтри по даті
             
+            console.log('📊 Відправляємо фільтри на сервер:', reportFilters);
+            console.log('📊 Тип звіту:', reportModalState.reportType);
+            
             // Отримуємо дані для звіту
             const reportResponse = await fetchFunction('/api/sportscomplex/bills/report', {
                 method: 'post',
                 data: reportFilters
             });
             
-            if (!reportResponse.data.success || !reportResponse.data.data.length) {
+            console.log('📊 Отримали відповідь від /bills/report:', reportResponse);
+            console.log('📊 reportResponse.data:', reportResponse.data);
+            console.log('📊 reportResponse.data.success:', reportResponse.data.success);
+            console.log('📊 reportResponse.data.data type:', typeof reportResponse.data.data);
+            console.log('📊 reportResponse.data.data isArray:', Array.isArray(reportResponse.data.data));
+            console.log('📊 reportResponse.data.data length:', reportResponse.data.data?.length);
+            
+            if (!reportResponse.data.success || !reportResponse.data.data || reportResponse.data.data.length === 0) {
                 notification({
                     type: 'warning',
                     title: "Попередження",
                     message: "Немає даних для формування звіту",
                     placement: 'top',
                 });
+                setReportModalState(prev => ({...prev, loading: false}));
                 return;
             }
+            
+            console.log('📊 Відправляємо дані до /export-word:', reportResponse.data.data);
+            console.log('📊 Перший елемент даних:', reportResponse.data.data[0]);
             
             // Генеруємо Word файл
             const response = await fetchFunction('/api/sportscomplex/bills/export-word', {
@@ -784,6 +798,10 @@ const Bills = () => {
                 data: reportResponse.data.data,
                 responseType: 'blob'
             });
+            
+            console.log('📊 Отримали відповідь від /export-word:', response);
+            console.log('📊 Response type:', typeof response.data);
+            console.log('📊 Response size:', response.data?.size);
             
             notification({
                 placement: "top",
@@ -799,16 +817,20 @@ const Bills = () => {
             const a = document.createElement('a');
             a.href = url;
             
-            // Формуємо назву файлу в залежності від типу звіту
-            let fileName = 'bills-report';
+            // ✅ ОНОВЛЕНІ НАЗВИ ФАЙЛІВ
+            let fileName;
             if (reportModalState.reportType === 'today') {
-                fileName += `-today-${new Date().toISOString().split('T')[0]}`;
+                const todayFormatted = new Date().toLocaleDateString('uk-UA');
+                fileName = `Звіт за день(${todayFormatted})`;
             } else if (reportModalState.reportType === 'date') {
-                fileName += `-${reportModalState.selectedDate}`;
+                const selectedDateFormatted = new Date(reportModalState.selectedDate).toLocaleDateString('uk-UA');
+                fileName = `Звіт за день(${selectedDateFormatted})`;
             } else {
-                fileName += `-all-time-${new Date().toISOString().split('T')[0]}`;
+                fileName = 'Звіт по платежам за увесь час';
             }
             fileName += '.docx';
+            
+            console.log('📊 Назва файлу:', fileName);
             
             a.download = fileName;
             document.body.appendChild(a);
@@ -819,6 +841,11 @@ const Bills = () => {
             closeReportModal();
             
         } catch (error) {
+            console.error('❌ Помилка генерації звіту:', error);
+            console.error('❌ Error response:', error?.response);
+            console.error('❌ Error response status:', error?.response?.status);
+            console.error('❌ Error response data:', error?.response?.data);
+            
             if (error?.response?.status === 401) {
                 notification({
                     type: 'warning',
@@ -833,7 +860,7 @@ const Bills = () => {
             notification({
                 type: 'warning',
                 title: "Помилка",
-                message: error?.response?.data?.message || "Помилка генерації звіту",
+                message: error?.response?.data?.message || error?.response?.data?.error || "Помилка генерації звіту",
                 placement: 'top',
             });
         } finally {
